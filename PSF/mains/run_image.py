@@ -42,7 +42,11 @@ def main():
         'centroid_z_um', 'centroid_y_um', 'centroid_x_um',
         'fwhm_z_um', 'fwhm_y_um', 'fwhm_x_um',
         'fwhm_pca1_um', 'fwhm_pca2_um', 'fwhm_pca3_um',
-        'pca_axis1', 'pca_axis2', 'pca_axis3'
+        'pca_axis1', 'pca_axis2', 'pca_axis3',
+        'tilt_angle_y_deg', 'tilt_angle_x_deg',
+        'skew_pc1', 'kurt_pc1',
+        'snr', 'vol_ratio_05_01',
+        'pc1_z_angle_deg', 'astig_um'
     ]
     with open(OUTPUT_CSV, 'w', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
