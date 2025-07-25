@@ -12,9 +12,9 @@ from skimage.segmentation import flood
 from skimage.measure import label, regionprops
 from skimage.transform import downscale_local_mean
 
-import utils.get_metrics
-import utils.get_windows
-import utils.load
+from PSF.utils import get_metrics
+from PSF.utils import get_windows
+from PSF.utils import load
 
 # User-editable parameters
 IMAGE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
@@ -28,14 +28,14 @@ NORMALIZE = True
 
 def main():
     print(f'Loading image...')
-    img_raw, vox = utils.load.load_image(IMAGE_PATH)
+    img_raw, vox = load.load_image(IMAGE_PATH)
 
     print(f'Downsampling image...')
-    img_ds = utils.load.downsample_image(img_raw, DOWNSAMPLE)
+    img_ds = load.downsample_image(img_raw, DOWNSAMPLE)
     vox_ds = tuple(v * d for v, d in zip(vox, DOWNSAMPLE))
 
     print(f'Finding peaks...')
-    peaks = utils.get_windows.find_peaks(img_ds, threshold_rel=THRESH_REL, min_distance=MIN_DISTANCE)
+    peaks = get_windows.find_peaks(img_ds, threshold_rel=THRESH_REL, min_distance=MIN_DISTANCE)
 
     fieldnames = [
         'bead_index', 'peak_z', 'peak_y', 'peak_x',
@@ -50,11 +50,11 @@ def main():
 
         print(f'Processing peaks...')
         for idx, pk in enumerate(peaks):
-            bead = utils.get_windows.extract_cuboid_bead(img_ds, tuple(pk), crop_shape=CROP_SHAPE, normalize=NORMALIZE)
+            bead = get_windows.extract_cuboid_bead(img_ds, tuple(pk), crop_shape=CROP_SHAPE, normalize=NORMALIZE)
             if bead is None or bead.sum() == 0 or np.count_nonzero(bead) < 10:
                 continue
             
-            m = utils.get_metrics.compute_psf_metrics(bead, vox_ds)
+            m = get_metrics.compute_psf_metrics(bead, vox_ds)
             rec = {
                 'bead_index': idx,
                 'peak_z': int(pk[0]),
