@@ -108,9 +108,9 @@ def compute_pc1_z_angle(axis1):
     cosθ    = abs(np.dot(axis1, z_axis)) / (np.linalg.norm(axis1) or 1)
     return np.degrees(np.arccos(np.clip(cosθ, -1, 1)))
 
-def compute_astig(fx, fy):
+def compute_astig(f2, f3):
     """Astigmatism metric = |FWHM_x − FWHM_y|."""
-    return abs(fx - fy)
+    return abs(f2 - f3)
 
 def compute_psf_metrics(bead, vox_ds):
     # --- basic metrics (unchanged) ---
@@ -128,7 +128,7 @@ def compute_psf_metrics(bead, vox_ds):
     snr_val               = compute_snr(bead)
     vol_ratio_05_01       = compute_volume_ratio(bead, low=0.1, high=0.5)
     pc1_z_angle_deg       = compute_pc1_z_angle(pca1)
-    astig_um              = compute_astig(fx, fy)
+    astig_um              = compute_astig(f2, f3)
 
     return {
         # existing outputs

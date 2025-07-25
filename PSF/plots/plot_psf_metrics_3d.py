@@ -74,7 +74,7 @@ def plot_metric_kde(df, metrics=None):
         metrics = DEFAULT_METRICS
     metrics = [m for m in metrics if m in df.columns and is_numeric_col(df, m)]
     n = len(metrics)
-    cols = 3
+    cols = 6
     rows = int(np.ceil(n / cols))
     fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
     fig.suptitle("Metric KDEs (Seaborn)", fontsize=16, y=0.95)
@@ -82,7 +82,7 @@ def plot_metric_kde(df, metrics=None):
         ax = axes.flat[i]
         data = df[metric].dropna()
         if len(data) > 1:
-            sns.kdeplot(data, fill=True, bw_adjust=0.7, ax=ax, color='slateblue')
+            sns.kdeplot(data, fill=True, bw_adjust=1, ax=ax, color='slateblue')
             ax.set_title(metric.replace('_', ' '), fontsize=10)
             ax.set_xlabel(metric.replace('_', ' '))
             ax.set_ylabel('Density')
@@ -99,7 +99,7 @@ def plot_metric_boxplot(df, metrics=None):
         metrics = DEFAULT_METRICS
     metrics = [m for m in metrics if m in df.columns and is_numeric_col(df, m)]
     n = len(metrics)
-    cols = 3
+    cols = 6
     rows = int(np.ceil(n / cols))
     fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
     fig.suptitle("Metric Boxplots", fontsize=16, y=0.95)
@@ -170,7 +170,7 @@ def filter_outliers_fwhm(df, fwhm_metrics=None, iqr_factor=1.5):
 
 if __name__ == '__main__':
     # User-editable path to CSV
-    CSV_PATH = r'C:\Users\ishaa\OneDrive\Documents\VIBES2025\biomiid_stuff\psf\initial_results.csv'  # <-- Edit as needed
+    CSV_PATH = r'C:\Users\ishaa\OneDrive\Documents\VIBES2025\biomiid_stuff\psf\results_newmetrics.csv' # <-- Edit as needed
     print(f"Loading metrics from: {CSV_PATH}")
     df = pd.read_csv(CSV_PATH)
 
@@ -192,9 +192,9 @@ if __name__ == '__main__':
     df_filt = filter_outliers_fwhm(df)
 
     # Plot all metrics for inlier beads
-    plot_metric_scatter_3d(df_filt)
+    # plot_metric_scatter_3d(df_filt)
     plot_metric_kde(df_filt)
-    plot_metric_boxplot(df_filt)
+    # plot_metric_boxplot(df_filt)
 
     # Plot PCA quiver if possible
     if all(col in df_filt.columns for col in ['pca_axis1', 'x_um', 'y_um', 'z_um']):
