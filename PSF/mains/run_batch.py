@@ -2,18 +2,31 @@ import os
 import csv
 import json
 import numpy as np
-from tifffile import imsave
+from tifffile import imwrite
 from PSF.utils import load, get_windows, get_metrics
 from tqdm import tqdm
 import time
 
 # User-editable configuration
 IMAGE_PATHS = [
-    r'/path/to/image1.nd2',
-    r'/path/to/image2.nd2',
-    # Add more image paths here
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY002_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY003_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY004_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0500-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0500-slit-2250-z-258617_XY002_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0500-slit-2250-z-258617_XY003_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0500-slit-2250-z-258617_XY004_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-1000-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-1000-slit-2250-z-258617_XY002_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-1000-slit-2250-z-258617_XY003_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-1000-slit-2250-z-258617_XY004_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-neg0060-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-neg0060-slit-2250-z-258617_XY002_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-neg0060-slit-2250-z-258617_XY003_T001__Channel_GFP-MPSOPi.nd2",
+    r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-neg0060-slit-2250-z-258617_XY004_T001__Channel_GFP-MPSOPi.nd2"
 ]
-OUTPUT_ROOT = r'/path/to/output_dir'  # All results will go here
+OUTPUT_ROOT = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\250725_RESULTS"  # All results will go here
 DOWNSAMPLE = (1, 1, 1)
 THRESH_REL = 0.2
 MIN_DISTANCE = 3
@@ -64,8 +77,8 @@ def process_image(image_path, output_dir):
                 continue
 
             bead_path = os.path.join(output_dir, f'bead_{idx:04d}.tiff')
-            imsave(bead_path, bead.astype(np.float32))
-
+            imwrite(bead_path, bead.astype(np.float32))
+            
             m = get_metrics.compute_psf_metrics(bead, vox_ds)
             rec = {
                 'bead_index': idx,
