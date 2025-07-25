@@ -91,7 +91,7 @@ def plot_metric_kde(df, metrics=None):
             ax.axis('off')
     for j in range(len(metrics), len(axes.flat)):
         axes.flat[j].axis('off')
-    plt.tight_layout(rect=[0, 0, 1, 0.94])
+    plt.tight_layout()
     plt.show()
 
 def plot_metric_boxplot(df, metrics=None):

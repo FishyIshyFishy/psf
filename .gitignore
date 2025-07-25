@@ -1,2 +1,7 @@
 *.pyc
 *.egg-info
+
+psf_venv
+*.venv
+*.env
+__pycache__
