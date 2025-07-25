@@ -18,7 +18,7 @@ from PSF.utils import load
 
 # User-editable parameters
 IMAGE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
-OUTPUT_CSV = r'C:\Users\singhi7\Documents\psf\results.csv'
+OUTPUT_CSV = r'C:\Users\singhi7\Documents\psf\results_newmetrics.csv'
 DOWNSAMPLE = (1, 1, 1)  # (z, y, x)
 THRESH_REL = 0.2
 MIN_DISTANCE = 3
