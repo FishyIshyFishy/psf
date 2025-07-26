@@ -19,7 +19,7 @@ from PSF.utils import load
 # User-editable parameters
 IMAGE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
 OUTPUT_CSV = r'C:\Users\singhi7\Documents\psf\results.csv'
-DOWNSAMPLE = (1, 1, 1)  # (z, y, x)
+DOWNSAMPLE = (2,2,2)  # (z, y, x)
 THRESH_REL = 0.2
 MIN_DISTANCE = 3
 CROP_SHAPE = (80, 20, 20)  # (z, y, x) half-sizes
@@ -63,28 +63,28 @@ def main():
 
         print(f'Processing peaks...')
         for idx, pk in enumerate(peaks):
-            # Extract bead from full resolution image using peak location
-            bead = get_windows.extract_bead_adaptive(
-                img_full=img_raw,
-                peak_full=pk,  # pk is already in full resolution coordinates
+            tic = time.time()
+            bead, new_pk = get_windows.extract_bead_adaptive(
+                img=img_raw,
+                peak=tuple(pk),  # pk is already in full resolution coordinates
                 crop_shape=CROP_SHAPE,
                 normalize=NORMALIZE
             )
             
-            if bead is None or bead.sum() == 0 or np.count_nonzero(bead) < 10:
+            if bead is None or np.count_nonzero(bead) < 10:
                 continue
             
             m = get_metrics.compute_psf_metrics(bead, vox)  # Use full resolution voxel size
             rec = {
                 'bead_index': idx,
-                'peak_z': int(pk[0]),
-                'peak_y': int(pk[1]),
-                'peak_x': int(pk[2]),
+                'peak_z': int(new_pk[0]),
+                'peak_y': int(new_pk[1]),
+                'peak_x': int(new_pk[2]),
                 **m
             }
             writer.writerow(rec)
             csvfile.flush()
-            print(f'Processed peak {idx}')
+            print(f'Processed peak {idx} in time {(time.time() - tic):.2f}')
 
 if __name__ == '__main__':
     main()
