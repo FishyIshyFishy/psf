@@ -42,7 +42,7 @@ CROP_SHAPE = (80, 20, 20)  # (z, y, x) half-sizes
 NORMALIZE = True
 
 # Output file
-OUTPUT_CSV = 'test_all_datasets_results.csv'
+OUTPUT_CSV = r'C:\Users\singhi7\Documents\psf\initial_results.csv'
 
 def extract_dataset_info(filepath):
     """Extract offset and XY position from filename."""
