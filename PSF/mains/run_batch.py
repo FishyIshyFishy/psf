@@ -6,6 +6,9 @@ from tifffile import imwrite
 from PSF.utils import load, get_windows, get_metrics
 from tqdm import tqdm
 import time
+import napari
+
+DEBUG = True
 
 IMAGE_PATHS = [
     r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2",
@@ -26,7 +29,7 @@ IMAGE_PATHS = [
     r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-neg0060-slit-2250-z-258617_XY004_T001__Channel_GFP-MPSOPi.nd2"
 ]
 OUTPUT_ROOT = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\250725_RESULTS"  # All results will go here
-DOWNSAMPLE = (1, 1, 1)
+DOWNSAMPLE = (2, 2, 2)  # Updated to match run_image.py
 THRESH_REL = 0.2
 MIN_DISTANCE = 3
 CROP_SHAPE = (80, 20, 20)
@@ -44,6 +47,22 @@ FIELDNAMES = [
     'pc1_z_angle_deg', 'astig_um'
 ]
 
+def visualize_beads_in_napari(beads, image_name, start_idx=0, batch_size=20):
+    viewer = napari.Viewer(title=f"Beads from {image_name} (batch {start_idx//batch_size + 1})")
+    
+    for i, bead in enumerate(beads):
+        if bead is not None and bead.size > 0:
+            viewer.add_image(
+                bead, 
+                name=f"Bead {start_idx + i:04d}",
+                colormap='viridis',
+                blending='additive'
+            )
+    
+    print(f"  Showing beads {start_idx} to {start_idx + len(beads) - 1} in napari")
+    print(f"  Press 'q' to close viewer and continue...")
+    napari.run()
+
 def process_image(image_path, output_dir):
     tic = time.time()
     print(f'Processing {image_path}')
@@ -56,34 +75,65 @@ def process_image(image_path, output_dir):
         print(f'  Image {image_path} is empty, skipping.')
         return
 
+    print(f'Downsampling image...')
     img_ds = load.downsample_image(img_raw, DOWNSAMPLE)
     vox_ds = tuple(v * d for v, d in zip(vox, DOWNSAMPLE))
-    peaks = get_windows.find_peaks(img_ds, threshold_rel=THRESH_REL, min_distance=MIN_DISTANCE)
+    
+    print(f'Finding peaks using fast method...')
+    peaks = get_windows.find_peaks_fast(
+        img_full=img_raw,
+        img_ds=img_ds,
+        downsample_factors=DOWNSAMPLE,
+        voxel_size_ds=vox_ds,
+        min_sep_um=1.0,
+        threshold_rel=THRESH_REL,
+        min_distance=MIN_DISTANCE,
+        exclude_border_vox=CROP_SHAPE
+    )
 
     os.makedirs(output_dir, exist_ok=True)
-    metadata = {'voxel_size_um': {'z': vox_ds[0], 'y': vox_ds[1], 'x': vox_ds[2]}}
+    metadata = {'voxel_size_um': {'z': vox[0], 'y': vox[1], 'x': vox[2]}}  # Use full resolution voxel size
     with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
         json.dump(metadata, f, indent=2)
     
     csv_path = os.path.join(output_dir, 'results.csv')
+    
+    # For debug mode, collect all beads for visualization
+    if DEBUG:
+        all_beads = []
+        valid_bead_indices = []
+    
     with open(csv_path, 'w', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=FIELDNAMES)
         writer.writeheader()
 
         for idx, pk in enumerate(tqdm(peaks, desc='  Extracting beads')):
-            bead = get_windows.extract_cuboid_bead(img_ds, tuple(pk), crop_shape=CROP_SHAPE, normalize=NORMALIZE)
-            if bead is None or bead.sum() == 0 or np.count_nonzero(bead) < 10:
+            # Use adaptive bead extraction from full resolution image
+            bead, new_pk = get_windows.extract_bead_adaptive(
+                img=img_raw,
+                peak=tuple(pk),
+                crop_shape=CROP_SHAPE,
+                normalize=NORMALIZE
+            )
+            
+            if DEBUG:
+                all_beads.append(bead)
+                if bead is not None and np.count_nonzero(bead) >= 10:
+                    valid_bead_indices.append(idx)
+            
+            if bead is None or np.count_nonzero(bead) < 10:
                 continue
 
             bead_path = os.path.join(output_dir, f'bead_{idx:04d}.tiff')
             imwrite(bead_path, bead.astype(np.float32))
             
-            m = get_metrics.compute_psf_metrics(bead, vox_ds)
+            # Use full resolution voxel size for metrics
+            m = get_metrics.compute_psf_metrics(bead, vox)
             rec = {
                 'bead_index': idx,
-                'peak_z': int(pk[0]),
-                'peak_y': int(pk[1]),
-                'peak_x': int(pk[2]),
+                'peak_z': int(new_pk[0]),
+                'peak_y': int(new_pk[1]),
+                'peak_x': int(new_pk[2]),
                 **m
             }
             writer.writerow(rec)
@@ -92,12 +142,44 @@ def process_image(image_path, output_dir):
     print(f'  Done: {len(peaks)} peaks processed, results in {output_dir}')
     toc = time.time()
     print(f'  Time taken: {toc - tic} seconds')
+    
+    # Debug visualization
+    if DEBUG and all_beads:
+        image_name = os.path.splitext(os.path.basename(image_path))[0]
+        print(f'  DEBUG: Found {len(valid_bead_indices)} valid beads out of {len(peaks)} peaks')
+        
+        # Show beads in batches of 20
+        batch_size = 20
+        for batch_start in range(0, len(all_beads), batch_size):
+            batch_end = min(batch_start + batch_size, len(all_beads))
+            batch_beads = all_beads[batch_start:batch_end]
+            
+            # Filter out None beads for visualization
+            valid_batch_beads = [b for b in batch_beads if b is not None and b.size > 0]
+            
+            if valid_batch_beads:
+                visualize_beads_in_napari(valid_batch_beads, image_name, batch_start, batch_size)
+            else:
+                print(f"  No valid beads in batch {batch_start//batch_size + 1}")
+            
+            # Ask user if they want to continue to next batch
+            if batch_end < len(all_beads):
+                response = input(f"  Continue to next batch? (y/n): ")
+                if response.lower() != 'y':
+                    break
 
 def main():
     for image_path in IMAGE_PATHS:
         base = os.path.splitext(os.path.basename(image_path))[0]
         out_dir = os.path.join(OUTPUT_ROOT, base)
         process_image(image_path, out_dir)
+        
+        # In debug mode, ask if user wants to continue to next image
+        if DEBUG:
+            response = input(f"\nContinue to next image? (y/n): ")
+            if response.lower() != 'y':
+                print("Stopping batch processing.")
+                break
 
 if __name__ == '__main__':
     main() 
