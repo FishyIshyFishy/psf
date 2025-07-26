@@ -3,7 +3,7 @@ import numpy as np
 from skimage.filters import gaussian
 from skimage.feature import peak_local_max
 import numpy as np
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, center_of_mass
 from skimage.feature import peak_local_max
 from skimage.measure import label
 
@@ -23,28 +23,7 @@ def find_peaks_fast(
     min_distance=2,
     exclude_border_vox=(6, 10, 10)
 ):
-    """
-    Two-stage peak finding: find rough peaks on downsampled image, then scale back to full resolution.
-    
-    Args:
-        img_full: Full resolution image
-        img_ds: Downsampled image
-        downsample_factors: (z, y, x) downsampling factors
-        voxel_size_ds: Voxel size of downsampled image
-        min_sep_um: Minimum separation between peaks in microns
-        threshold_rel: Relative threshold for peak detection
-        min_distance: Minimum distance between peaks in downsampled voxels
-        exclude_border_vox: Border exclusion in full resolution voxels
-    
-    Returns:
-        List of peak coordinates in full resolution image
-    """
-    print(f'Finding peaks on downsampled image...')
-    
-    # Simple smoothing on downsampled image (much faster)
     sm_ds = gaussian(img_ds, sigma=0.5)
-    
-    # Find peaks on downsampled image
     peaks_ds = peak_local_max(
         sm_ds, 
         threshold_rel=threshold_rel, 
@@ -53,13 +32,11 @@ def find_peaks_fast(
     )
     
     print(f'Found {len(peaks_ds)} peaks on downsampled image')
-    
-    # Scale peaks back to full resolution
+
     dz, dy, dx = downsample_factors
     peaks_full = peaks_ds * np.array([dz, dy, dx])
     peaks_full = peaks_full.astype(int)
-    
-    # Border guard: remove peaks too close to borders for your crop
+
     zpad, ypad, xpad = exclude_border_vox
     Z, Y, X = img_full.shape
     keep = (
@@ -146,21 +123,50 @@ def extract_cuboid_bead(img, peak, crop_shape=(6,10,10), normalize=True):
         return None
     return crop / crop.max() if normalize else crop
 
+def extract_bead_adaptive(
+    img: np.ndarray,
+    peak: tuple[int,int,int],
+    crop_shape: tuple[int,int,int] = (6,10,10),
+    normalize: bool = True
+) -> tuple[np.ndarray, tuple[int,int,int]] | tuple[None, tuple[int,int,int]]:
+    zc, yc, xc = peak
+    dz, dy, dx = crop_shape
+    Z, Y, X = img.shape
 
-def extract_cuboid_bead_from_full_resolution(img_full, peak_full, downsample_factors, crop_shape=(6,10,10), normalize=True):
-    """
-    Extract bead window from full resolution image using peak location.
-    
-    Args:
-        img_full: Full resolution image
-        peak_full: Peak coordinates in full resolution image
-        downsample_factors: (z, y, x) downsampling factors (for reference)
-        crop_shape: Crop shape in full resolution voxels
-        normalize: Whether to normalize the extracted window
-    
-    Returns:
-        Extracted bead window or None if invalid
-    """
-    # Extract window from full resolution image
-    return extract_cuboid_bead(img_full, peak_full, crop_shape, normalize)
+    # 1) Coarse crop
+    z0, z1 = max(zc - dz, 0), min(zc + dz + 1, Z)
+    y0, y1 = max(yc - dy, 0), min(yc + dy + 1, Y)
+    x0, x1 = max(xc - dx, 0), min(xc + dx + 1, X)
+    crop = img[z0:z1, y0:y1, x0:x1]
+    if crop.size == 0 or crop.max() == 0:
+        return None, peak
 
+    # 2) Compute local COM (in crop‐coordinates)
+    com_z, com_y, com_x = center_of_mass(crop)
+    # If COM is nan (e.g. all zeros), bail out
+    if np.isnan(com_z + com_y + com_x):
+        return None, peak
+
+    # 3) Map COM → full‐image coordinates
+    z_ref = int(round(z0 + com_z))
+    y_ref = int(round(y0 + com_y))
+    x_ref = int(round(x0 + com_x))
+
+    # 4) Refined crop around (z_ref, y_ref, x_ref)
+    z0r, z1r = max(z_ref - dz, 0), min(z_ref + dz + 1, Z)
+    y0r, y1r = max(y_ref - dy, 0), min(y_ref + dy + 1, Y)
+    x0r, x1r = max(x_ref - dx, 0), min(x_ref + dx + 1, X)
+    crop_ref = img[z0r:z1r, y0r:y1r, x0r:x1r]
+    if crop_ref.size == 0 or crop_ref.max() == 0:
+        # fallback to the coarse crop if refinement went out of bounds
+        final_crop = crop
+        refined_peak = peak
+    else:
+        final_crop = crop_ref
+        refined_peak = (z_ref, y_ref, x_ref)
+
+    # 5) Normalize if requested
+    if normalize and final_crop.max() > 0:
+        final_crop = final_crop / final_crop.max()
+
+    return final_crop, refined_peak

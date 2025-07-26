@@ -64,10 +64,9 @@ def main():
         print(f'Processing peaks...')
         for idx, pk in enumerate(peaks):
             # Extract bead from full resolution image using peak location
-            bead = get_windows.extract_cuboid_bead_from_full_resolution(
+            bead = get_windows.extract_bead_adaptive(
                 img_full=img_raw,
                 peak_full=pk,  # pk is already in full resolution coordinates
-                downsample_factors=DOWNSAMPLE,
                 crop_shape=CROP_SHAPE,
                 normalize=NORMALIZE
             )
