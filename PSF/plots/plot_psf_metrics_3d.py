@@ -77,7 +77,6 @@ def plot_metric_kde(df, metrics=None):
     cols = 6
     rows = int(np.ceil(n / cols))
     fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
-    fig.suptitle("Metric KDEs (Seaborn)", fontsize=16, y=0.95)
     for i, metric in enumerate(metrics):
         ax = axes.flat[i]
         data = df[metric].dropna()
@@ -170,7 +169,7 @@ def filter_outliers_fwhm(df, fwhm_metrics=None, iqr_factor=1.5):
 
 if __name__ == '__main__':
     # User-editable path to CSV
-    CSV_PATH = r'C:\Users\ishaa\OneDrive\Documents\VIBES2025\biomiid_stuff\psf\results_newmetrics.csv' # <-- Edit as needed
+    CSV_PATH = r'C:\Users\ishaa\OneDrive\Documents\VIBES2025\biomiid_stuff\psf\results.csv' # <-- Edit as needed
     print(f"Loading metrics from: {CSV_PATH}")
     df = pd.read_csv(CSV_PATH)
 
