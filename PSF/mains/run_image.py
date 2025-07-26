@@ -34,12 +34,15 @@ def main():
     img_ds = load.downsample_image(img_raw, DOWNSAMPLE)
     vox_ds = tuple(v * d for v, d in zip(vox, DOWNSAMPLE))
 
-    print(f'Finding peaks...')
-    peaks = get_windows.find_peaks_adv(img_ds,
-        voxel_size=vox_ds,
-        min_sep_um=1.0,              # or adjust based on expected bead spacing
-        k_sigma=6.0,                 # noise threshold multiplier
-        smooth_sigma_um=(0.4, 0.2, 0.2),  # anisotropic smoothing
+    print(f'Finding peaks using fast method...')
+    peaks = get_windows.find_peaks_fast(
+        img_full=img_raw,
+        img_ds=img_ds,
+        downsample_factors=DOWNSAMPLE,
+        voxel_size_ds=vox_ds,
+        min_sep_um=1.0,
+        threshold_rel=THRESH_REL,
+        min_distance=MIN_DISTANCE,
         exclude_border_vox=CROP_SHAPE
     )
 
@@ -60,11 +63,19 @@ def main():
 
         print(f'Processing peaks...')
         for idx, pk in enumerate(peaks):
-            bead = get_windows.extract_cuboid_bead(img_ds, tuple(pk), crop_shape=CROP_SHAPE, normalize=NORMALIZE)
+            # Extract bead from full resolution image using peak location
+            bead = get_windows.extract_cuboid_bead_from_full_resolution(
+                img_full=img_raw,
+                peak_full=pk,  # pk is already in full resolution coordinates
+                downsample_factors=DOWNSAMPLE,
+                crop_shape=CROP_SHAPE,
+                normalize=NORMALIZE
+            )
+            
             if bead is None or bead.sum() == 0 or np.count_nonzero(bead) < 10:
                 continue
             
-            m = get_metrics.compute_psf_metrics(bead, vox_ds)
+            m = get_metrics.compute_psf_metrics(bead, vox)  # Use full resolution voxel size
             rec = {
                 'bead_index': idx,
                 'peak_z': int(pk[0]),
