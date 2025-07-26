@@ -18,7 +18,7 @@ from PSF.utils import load
 
 # User-editable parameters
 IMAGE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
-OUTPUT_CSV = r'C:\Users\singhi7\Documents\psf\results_newmetrics.csv'
+OUTPUT_CSV = r'C:\Users\singhi7\Documents\psf\results.csv'
 DOWNSAMPLE = (1, 1, 1)  # (z, y, x)
 THRESH_REL = 0.2
 MIN_DISTANCE = 3
@@ -35,7 +35,13 @@ def main():
     vox_ds = tuple(v * d for v, d in zip(vox, DOWNSAMPLE))
 
     print(f'Finding peaks...')
-    peaks = get_windows.find_peaks(img_ds, threshold_rel=THRESH_REL, min_distance=MIN_DISTANCE)
+    peaks = get_windows.find_peaks_adv(img_ds,
+        voxel_size=vox_ds,
+        min_sep_um=1.0,              # or adjust based on expected bead spacing
+        k_sigma=6.0,                 # noise threshold multiplier
+        smooth_sigma_um=(0.4, 0.2, 0.2),  # anisotropic smoothing
+        exclude_border_vox=CROP_SHAPE
+    )
 
     fieldnames = [
         'bead_index', 'peak_z', 'peak_y', 'peak_x',
