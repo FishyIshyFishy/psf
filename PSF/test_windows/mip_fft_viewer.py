@@ -2,12 +2,12 @@ import numpy as np
 import napari
 import matplotlib.pyplot as plt
 from tifffile import imread
-from scipy.fft import fft2, fftshift
-from sklearn.decomposition import PCA
-import matplotlib.patches as patches
+from scipy.fft import fft2, fftshift, fftfreq
+import nd2
 
-# Configuration - Update this path to your bead TIFF file
+# Configuration - Update these paths
 BEAD_TIFF_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\xy1_windows\bead_0011.tif"
+ND2_FILE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
 
 def load_bead(tiff_path):
     """Load bead from TIFF file."""
@@ -15,6 +15,19 @@ def load_bead(tiff_path):
     print(f"Loaded bead with shape: {bead.shape}")
     print(f"Bead value range: [{bead.min():.3f}, {bead.max():.3f}]")
     return bead
+
+def get_voxel_size(nd2_path):
+    """Get voxel size from ND2 file."""
+    try:
+        with nd2.ND2File(nd2_path) as f:
+            # Get voxel size in microns
+            voxel_size = f.voxel_size()
+            print(f"Voxel size from ND2: {voxel_size} µm")
+            return voxel_size
+    except Exception as e:
+        print(f"Warning: Could not read voxel size from ND2 file: {e}")
+        print("Using default voxel size: (0.2, 0.1, 0.1) µm")
+        return (0.2, 0.1, 0.1)  # Default: (z, y, x) in µm
 
 def compute_yz_mip(bead):
     """Compute Maximum Intensity Projection along X-axis (YZ plane)."""
@@ -26,8 +39,8 @@ def compute_yz_mip(bead):
     
     return mip_yz
 
-def compute_fft_magnitude(image_2d):
-    """Compute the magnitude of the 2D Fourier transform."""
+def compute_fft_magnitude(image_2d, voxel_size):
+    """Compute the magnitude of the 2D Fourier transform with proper scaling."""
     # Apply FFT
     fft_result = fft2(image_2d)
     
@@ -42,152 +55,62 @@ def compute_fft_magnitude(image_2d):
     
     return log_magnitude
 
-def compute_pca_2d(image_2d, name="Image"):
-    """Compute PCA on 2D image data."""
-    # Get coordinates of non-zero pixels
-    coords = np.array(np.where(image_2d > 0)).T
-    intensities = image_2d[image_2d > 0]
+def create_frequency_axes(image_shape, voxel_size):
+    """Create frequency axes in physical units (1/µm)."""
+    # Get Y and Z voxel sizes (assuming bead is in YZ plane)
+    vz, vy = voxel_size[0], voxel_size[1]  # Z and Y voxel sizes
     
-    if len(coords) < 2:
-        print(f"Warning: Not enough non-zero pixels for PCA in {name}")
-        return None, None, None
+    # Create frequency axes
+    freq_y = fftfreq(image_shape[1], d=vy)  # Y frequencies
+    freq_z = fftfreq(image_shape[0], d=vz)  # Z frequencies
     
-    # Compute intensity-weighted PCA
-    centroid = np.average(coords, weights=intensities, axis=0)
-    coords_centered = coords - centroid
+    # Shift frequencies to center
+    freq_y_shifted = fftshift(freq_y)
+    freq_z_shifted = fftshift(freq_z)
     
-    # Weighted covariance matrix
-    cov_matrix = np.zeros((2, 2))
-    for i in range(2):
-        for j in range(2):
-            cov_matrix[i, j] = np.average(
-                coords_centered[:, i] * coords_centered[:, j], 
-                weights=intensities
-            )
-    
-    # Compute eigenvalues and eigenvectors
-    eigenvals, eigenvecs = np.linalg.eigh(cov_matrix)
-    
-    # Sort in descending order
-    order = np.argsort(eigenvals)[::-1]
-    eigenvals = eigenvals[order]
-    eigenvecs = eigenvecs[:, order]
-    
-    print(f"{name} PCA eigenvalues: {eigenvals}")
-    print(f"{name} PCA eigenvectors (columns):\n{eigenvecs}")
-    
-    return eigenvals, eigenvecs, centroid
+    return freq_y_shifted, freq_z_shifted
 
-def plot_mip_fft_pca(mip_yz, fft_yz, pca_mip, pca_fft):
-    """Create a comprehensive plot showing MIP, FFT, and their PCAs."""
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-    fig.suptitle('YZ MIP Analysis: Real vs Fourier Domain', fontsize=16)
+def plot_mip_and_fft(mip_yz, fft_yz, voxel_size):
+    """Create a simple plot showing MIP and its FFT with proper scaling."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle('X Projection (YZ MIP) and Fourier Transform', fontsize=14)
     
-    # Plot original MIP
-    axes[0, 0].imshow(mip_yz, cmap='viridis', aspect='auto')
-    axes[0, 0].set_title('MIP YZ (X projection)')
-    axes[0, 0].set_xlabel('Y')
-    axes[0, 0].set_ylabel('Z')
+    # Create frequency axes
+    freq_y, freq_z = create_frequency_axes(mip_yz.shape, voxel_size)
     
-    # Plot FFT
-    axes[0, 1].imshow(fft_yz, cmap='hot', aspect='auto')
-    axes[0, 1].set_title('FFT Magnitude (YZ)')
-    axes[0, 1].set_xlabel('Frequency Y')
-    axes[0, 1].set_ylabel('Frequency Z')
+    # Plot MIP
+    im1 = ax1.imshow(mip_yz, cmap='viridis', aspect='auto')
+    ax1.set_title('X Projection (YZ MIP)')
+    ax1.set_xlabel('Y')
+    ax1.set_ylabel('Z')
+    plt.colorbar(im1, ax=ax1, label='Intensity')
     
-    # Plot PCA on MIP
-    if pca_mip[0] is not None:
-        eigenvals, eigenvecs, centroid = pca_mip
-        
-        # Create PCA visualization
-        axes[0, 2].imshow(mip_yz, cmap='viridis', aspect='auto')
-        axes[0, 2].set_title('PCA on MIP YZ')
-        axes[0, 2].set_xlabel('Y')
-        axes[0, 2].set_ylabel('Z')
-        
-        # Draw PCA axes
-        scale = 20  # Scale factor for visualization
-        pc1_vec = eigenvecs[:, 0] * np.sqrt(eigenvals[0]) * scale
-        pc2_vec = eigenvecs[:, 1] * np.sqrt(eigenvals[1]) * scale
-        
-        # Draw PC1 (red)
-        axes[0, 2].arrow(centroid[1], centroid[0], pc1_vec[1], pc1_vec[0], 
-                         color='red', width=2, head_width=4, head_length=3)
-        axes[0, 2].arrow(centroid[1], centroid[0], -pc1_vec[1], -pc1_vec[0], 
-                         color='red', width=2, head_width=4, head_length=3)
-        
-        # Draw PC2 (green)
-        axes[0, 2].arrow(centroid[1], centroid[0], pc2_vec[1], pc2_vec[0], 
-                         color='green', width=2, head_width=4, head_length=3)
-        axes[0, 2].arrow(centroid[1], centroid[0], -pc2_vec[1], -pc2_vec[0], 
-                         color='green', width=2, head_width=4, head_length=3)
-        
-        axes[0, 2].text(0.02, 0.98, f'PC1: {eigenvals[0]:.2f}\nPC2: {eigenvals[1]:.2f}', 
-                        transform=axes[0, 2].transAxes, verticalalignment='top',
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    # Plot FFT with proper frequency axes
+    extent = [freq_y.min(), freq_y.max(), freq_z.min(), freq_z.max()]
+    im2 = ax2.imshow(fft_yz, cmap='hot', aspect='auto', extent=extent)
+    ax2.set_title('Fourier Transform Magnitude')
+    ax2.set_xlabel('Frequency Y (1/µm)')
+    ax2.set_ylabel('Frequency Z (1/µm)')
+    plt.colorbar(im2, ax=ax2, label='Log Magnitude')
     
-    # Plot PCA on FFT
-    if pca_fft[0] is not None:
-        eigenvals, eigenvecs, centroid = pca_fft
-        
-        # Create PCA visualization
-        axes[1, 0].imshow(fft_yz, cmap='hot', aspect='auto')
-        axes[1, 0].set_title('PCA on FFT YZ')
-        axes[1, 0].set_xlabel('Frequency Y')
-        axes[1, 0].set_ylabel('Frequency Z')
-        
-        # Draw PCA axes
-        scale = 20  # Scale factor for visualization
-        pc1_vec = eigenvecs[:, 0] * np.sqrt(eigenvals[0]) * scale
-        pc2_vec = eigenvecs[:, 1] * np.sqrt(eigenvals[1]) * scale
-        
-        # Draw PC1 (red)
-        axes[1, 0].arrow(centroid[1], centroid[0], pc1_vec[1], pc1_vec[0], 
-                         color='red', width=2, head_width=4, head_length=3)
-        axes[1, 0].arrow(centroid[1], centroid[0], -pc1_vec[1], -pc1_vec[0], 
-                         color='red', width=2, head_width=4, head_length=3)
-        
-        # Draw PC2 (green)
-        axes[1, 0].arrow(centroid[1], centroid[0], pc2_vec[1], pc2_vec[0], 
-                         color='green', width=2, head_width=4, head_length=3)
-        axes[1, 0].arrow(centroid[1], centroid[0], -pc2_vec[1], -pc2_vec[0], 
-                         color='green', width=2, head_width=4, head_length=3)
-        
-        axes[1, 0].text(0.02, 0.98, f'PC1: {eigenvals[0]:.2f}\nPC2: {eigenvals[1]:.2f}', 
-                        transform=axes[1, 0].transAxes, verticalalignment='top',
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
-    # Comparison plots
-    if pca_mip[0] is not None and pca_fft[0] is not None:
-        # Eigenvalue comparison
-        mip_eigenvals, _, _ = pca_mip
-        fft_eigenvals, _, _ = pca_fft
-        
-        axes[1, 1].bar(['PC1', 'PC2'], mip_eigenvals, alpha=0.7, label='MIP', color='blue')
-        axes[1, 1].bar(['PC1', 'PC2'], fft_eigenvals, alpha=0.7, label='FFT', color='orange')
-        axes[1, 1].set_title('Eigenvalue Comparison')
-        axes[1, 1].set_ylabel('Eigenvalue')
-        axes[1, 1].legend()
-        
-        # Aspect ratio comparison
-        mip_aspect = mip_eigenvals[0] / mip_eigenvals[1] if mip_eigenvals[1] > 0 else 0
-        fft_aspect = fft_eigenvals[0] / fft_eigenvals[1] if fft_eigenvals[1] > 0 else 0
-        
-        axes[1, 2].bar(['MIP', 'FFT'], [mip_aspect, fft_aspect], color=['blue', 'orange'])
-        axes[1, 2].set_title('Aspect Ratio (PC1/PC2)')
-        axes[1, 2].set_ylabel('Aspect Ratio')
+    # Add frequency scale information
+    max_freq_y = np.max(np.abs(freq_y))
+    max_freq_z = np.max(np.abs(freq_z))
+    ax2.text(0.02, 0.98, f'Max freq Y: {max_freq_y:.2f} 1/µm\nMax freq Z: {max_freq_z:.2f} 1/µm', 
+              transform=ax2.transAxes, verticalalignment='top',
+              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     plt.tight_layout()
     plt.show()
 
-def visualize_in_napari(mip_yz, fft_yz, pca_mip, pca_fft):
-    """Visualize MIP, FFT, and their PCAs in napari."""
-    viewer = napari.Viewer(title="YZ MIP Analysis: Real vs Fourier Domain")
+def visualize_in_napari(mip_yz, fft_yz):
+    """Visualize MIP and FFT in napari."""
+    viewer = napari.Viewer(title="X Projection and Fourier Transform")
     
     # Add MIP
     viewer.add_image(
         mip_yz,
-        name="MIP YZ",
+        name="X Projection (YZ MIP)",
         colormap='viridis',
         blending='additive'
     )
@@ -195,97 +118,24 @@ def visualize_in_napari(mip_yz, fft_yz, pca_mip, pca_fft):
     # Add FFT
     viewer.add_image(
         fft_yz,
-        name="FFT YZ",
+        name="Fourier Transform",
         colormap='hot',
         blending='additive'
     )
     
-    # Add PCA vectors for MIP if available
-    if pca_mip[0] is not None:
-        eigenvals, eigenvecs, centroid = pca_mip
-        
-        # Scale eigenvectors by eigenvalues for visualization
-        scaled_vectors = eigenvecs * np.sqrt(eigenvals[:, np.newaxis])
-        
-        # PC1 (red)
-        viewer.add_vectors(
-            np.array([centroid]),
-            scaled_vectors[:, 0:1].T,
-            name="MIP PC1",
-            edge_color='red',
-            length=10
-        )
-        
-        # PC2 (green)
-        viewer.add_vectors(
-            np.array([centroid]),
-            scaled_vectors[:, 1:2].T,
-            name="MIP PC2",
-            edge_color='green',
-            length=10
-        )
-    
-    # Add PCA vectors for FFT if available
-    if pca_fft[0] is not None:
-        eigenvals, eigenvecs, centroid = pca_fft
-        
-        # Scale eigenvectors by eigenvalues for visualization
-        scaled_vectors = eigenvecs * np.sqrt(eigenvals[:, np.newaxis])
-        
-        # PC1 (orange)
-        viewer.add_vectors(
-            np.array([centroid]),
-            scaled_vectors[:, 0:1].T,
-            name="FFT PC1",
-            edge_color='orange',
-            length=10
-        )
-        
-        # PC2 (yellow)
-        viewer.add_vectors(
-            np.array([centroid]),
-            scaled_vectors[:, 1:2].T,
-            name="FFT PC2",
-            edge_color='yellow',
-            length=10
-        )
-    
     print("Visualization opened in napari")
-    print("MIP YZ: viridis colormap")
-    print("FFT YZ: hot colormap")
-    print("MIP PCA: red/green vectors")
-    print("FFT PCA: orange/yellow vectors")
+    print("X Projection: viridis colormap")
+    print("Fourier Transform: hot colormap")
     
     return viewer
 
-def analyze_comparison(pca_mip, pca_fft):
-    """Analyze and compare PCA results between MIP and FFT."""
-    print("\n=== PCA Comparison Analysis ===")
-    
-    if pca_mip[0] is not None and pca_fft[0] is not None:
-        mip_eigenvals, mip_eigenvecs, _ = pca_mip
-        fft_eigenvals, fft_eigenvecs, _ = pca_fft
-        
-        print("MIP PCA Results:")
-        print(f"  Eigenvalues: {mip_eigenvals}")
-        print(f"  PC1 direction: {mip_eigenvecs[:, 0]}")
-        print(f"  PC2 direction: {mip_eigenvecs[:, 1]}")
-        print(f"  Aspect ratio (PC1/PC2): {mip_eigenvals[0]/mip_eigenvals[1]:.3f}")
-        
-        print("\nFFT PCA Results:")
-        print(f"  Eigenvalues: {fft_eigenvals}")
-        print(f"  PC1 direction: {fft_eigenvecs[:, 0]}")
-        print(f"  PC2 direction: {fft_eigenvecs[:, 1]}")
-        print(f"  Aspect ratio (PC1/PC2): {fft_eigenvals[0]/fft_eigenvals[1]:.3f}")
-        
-        print("\nComparison:")
-        print(f"  MIP total variance: {np.sum(mip_eigenvals):.3f}")
-        print(f"  FFT total variance: {np.sum(fft_eigenvals):.3f}")
-        print(f"  MIP vs FFT aspect ratio: {mip_eigenvals[0]/mip_eigenvals[1] / (fft_eigenvals[0]/fft_eigenvals[1]):.3f}")
-
 def main():
     """Main function to run the MIP and FFT analysis."""
-    print("=== YZ MIP Analysis: Real vs Fourier Domain ===")
+    print("=== X Projection and Fourier Transform Analysis ===")
+    
+    # Get voxel size from ND2 file
+    print("\n=== Getting Voxel Size ===")
+    voxel_size = get_voxel_size(ND2_FILE_PATH)
     
     # Load the bead
     try:
@@ -299,37 +149,27 @@ def main():
         return
     
     # Compute YZ MIP
-    print("\n=== Computing YZ MIP ===")
+    print("\n=== Computing X Projection ===")
     mip_yz = compute_yz_mip(bead)
     
     # Compute FFT
-    print("\n=== Computing FFT ===")
-    fft_yz = compute_fft_magnitude(mip_yz)
-    
-    # Compute PCA on MIP
-    print("\n=== Computing PCA on MIP ===")
-    pca_mip = compute_pca_2d(mip_yz, "MIP YZ")
-    
-    # Compute PCA on FFT
-    print("\n=== Computing PCA on FFT ===")
-    pca_fft = compute_pca_2d(fft_yz, "FFT YZ")
+    print("\n=== Computing Fourier Transform ===")
+    fft_yz = compute_fft_magnitude(mip_yz, voxel_size)
     
     # Plot results
     print("\n=== Plotting Results ===")
-    plot_mip_fft_pca(mip_yz, fft_yz, pca_mip, pca_fft)
-    
-    # Analyze comparison
-    analyze_comparison(pca_mip, pca_fft)
+    plot_mip_and_fft(mip_yz, fft_yz, voxel_size)
     
     # Visualize in napari
     print("\n=== Opening Napari Visualization ===")
-    viewer = visualize_in_napari(mip_yz, fft_yz, pca_mip, pca_fft)
+    viewer = visualize_in_napari(mip_yz, fft_yz)
     
     # Print summary
     print("\n=== Summary ===")
     print(f"Original bead shape: {bead.shape}")
-    print(f"MIP YZ shape: {mip_yz.shape}")
-    print(f"FFT YZ shape: {fft_yz.shape}")
+    print(f"X projection shape: {mip_yz.shape}")
+    print(f"FFT shape: {fft_yz.shape}")
+    print(f"Voxel size: {voxel_size} µm")
     
     # Run napari
     napari.run()
