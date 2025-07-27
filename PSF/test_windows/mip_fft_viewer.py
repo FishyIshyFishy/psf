@@ -89,6 +89,42 @@ def compute_fft_magnitude(image_2d, voxel_size):
     
     return log_magnitude
 
+def compute_pca_2d(image_2d, name="Image"):
+    """Compute PCA on 2D image data."""
+    # Get coordinates of non-zero pixels
+    coords = np.array(np.where(image_2d > 0)).T
+    intensities = image_2d[image_2d > 0]
+    
+    if len(coords) < 2:
+        print(f"Warning: Not enough non-zero pixels for PCA in {name}")
+        return None, None, None
+    
+    # Compute intensity-weighted PCA
+    centroid = np.average(coords, weights=intensities, axis=0)
+    coords_centered = coords - centroid
+    
+    # Weighted covariance matrix
+    cov_matrix = np.zeros((2, 2))
+    for i in range(2):
+        for j in range(2):
+            cov_matrix[i, j] = np.average(
+                coords_centered[:, i] * coords_centered[:, j], 
+                weights=intensities
+            )
+    
+    # Compute eigenvalues and eigenvectors
+    eigenvals, eigenvecs = np.linalg.eigh(cov_matrix)
+    
+    # Sort in descending order
+    order = np.argsort(eigenvals)[::-1]
+    eigenvals = eigenvals[order]
+    eigenvecs = eigenvecs[:, order]
+    
+    print(f"{name} PCA eigenvalues: {eigenvals}")
+    print(f"{name} PCA eigenvectors (columns):\n{eigenvecs}")
+    
+    return eigenvals, eigenvecs, centroid
+
 def create_frequency_axes(image_shape, voxel_size):
     """Create frequency axes in physical units (1/µm)."""
     # Get Y and Z voxel sizes (assuming volume is in YZ plane)
@@ -104,77 +140,114 @@ def create_frequency_axes(image_shape, voxel_size):
     
     return freq_y_shifted, freq_z_shifted
 
-def plot_mip_and_fft(mip_yz, fft_yz, voxel_size, crop_start, crop_size):
-    """Create a simple plot showing MIP and its FFT with proper scaling."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f'X Projection (YZ MIP) and Fourier Transform\nCrop: {crop_start} to {tuple(np.array(crop_start) + np.array(crop_size))}', fontsize=14)
+def plot_mip_and_fft_with_pca(mip_yz, fft_yz, voxel_size, crop_start, crop_size):
+    """Create a plot showing MIP and its FFT with PCA arrows overlaid."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle(f'X Projection (YZ MIP) and Fourier Transform with PCA\nCrop: {crop_start} to {tuple(np.array(crop_start) + np.array(crop_size))}', fontsize=14)
     
     # Create frequency axes
     freq_y, freq_z = create_frequency_axes(mip_yz.shape, voxel_size)
     
-    # Plot MIP
+    # Compute PCA on MIP
+    pca_mip = compute_pca_2d(mip_yz, "MIP YZ")
+    
+    # Compute PCA on FFT
+    pca_fft = compute_pca_2d(fft_yz, "FFT YZ")
+    
+    # Plot MIP with PCA arrows
     im1 = ax1.imshow(mip_yz, cmap='viridis', aspect='auto')
-    ax1.set_title('X Projection (YZ MIP)')
+    ax1.set_title('X Projection (YZ MIP) with PCA')
     ax1.set_xlabel('Y')
     ax1.set_ylabel('Z')
     plt.colorbar(im1, ax=ax1, label='Intensity')
     
-    # Plot FFT with proper frequency axes
+    # Overlay PCA arrows on MIP
+    if pca_mip[0] is not None:
+        eigenvals, eigenvecs, centroid = pca_mip
+        
+        # Scale eigenvectors by eigenvalues for visualization
+        scale = 15  # Scale factor for visualization
+        pc1_vec = eigenvecs[:, 0] * np.sqrt(eigenvals[0]) * scale
+        pc2_vec = eigenvecs[:, 1] * np.sqrt(eigenvals[1]) * scale
+        
+        # Draw PC1 (red)
+        ax1.arrow(centroid[1], centroid[0], pc1_vec[1], pc1_vec[0], 
+                  color='red', width=2, head_width=4, head_length=3, linewidth=2)
+        ax1.arrow(centroid[1], centroid[0], -pc1_vec[1], -pc1_vec[0], 
+                  color='red', width=2, head_width=4, head_length=3, linewidth=2)
+        
+        # Draw PC2 (green)
+        ax1.arrow(centroid[1], centroid[0], pc2_vec[1], pc2_vec[0], 
+                  color='green', width=2, head_width=4, head_length=3, linewidth=2)
+        ax1.arrow(centroid[1], centroid[0], -pc2_vec[1], -pc2_vec[0], 
+                  color='green', width=2, head_width=4, head_length=3, linewidth=2)
+        
+        # Add eigenvalue information
+        ax1.text(0.02, 0.98, f'PC1: {eigenvals[0]:.2f}\nPC2: {eigenvals[1]:.2f}', 
+                transform=ax1.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Plot FFT with proper frequency axes and PCA arrows
     extent = [freq_y.min(), freq_y.max(), freq_z.min(), freq_z.max()]
     im2 = ax2.imshow(fft_yz, cmap='hot', aspect='auto', extent=extent)
-    ax2.set_title('Fourier Transform Magnitude')
+    ax2.set_title('Fourier Transform Magnitude with PCA')
     ax2.set_xlabel('Frequency Y (1/µm)')
     ax2.set_ylabel('Frequency Z (1/µm)')
     plt.colorbar(im2, ax=ax2, label='Log Magnitude')
     
+    # Overlay PCA arrows on FFT
+    if pca_fft[0] is not None:
+        eigenvals, eigenvecs, centroid = pca_fft
+        
+        # Scale eigenvectors by eigenvalues for visualization
+        scale = 15  # Scale factor for visualization
+        pc1_vec = eigenvecs[:, 0] * np.sqrt(eigenvals[0]) * scale
+        pc2_vec = eigenvecs[:, 1] * np.sqrt(eigenvals[1]) * scale
+        
+        # Convert centroid from pixel coordinates to frequency coordinates
+        freq_centroid_y = freq_y[int(centroid[1])] if int(centroid[1]) < len(freq_y) else 0
+        freq_centroid_z = freq_z[int(centroid[0])] if int(centroid[0]) < len(freq_z) else 0
+        
+        # Scale vectors for frequency space (approximate conversion)
+        freq_scale_y = (freq_y.max() - freq_y.min()) / len(freq_y)
+        freq_scale_z = (freq_z.max() - freq_z.min()) / len(freq_z)
+        
+        pc1_vec_freq = pc1_vec * np.array([freq_scale_z, freq_scale_y])
+        pc2_vec_freq = pc2_vec * np.array([freq_scale_z, freq_scale_y])
+        
+        # Draw PC1 (red)
+        ax2.arrow(freq_centroid_y, freq_centroid_z, pc1_vec_freq[1], pc1_vec_freq[0], 
+                  color='red', width=0.1, head_width=0.2, head_length=0.15, linewidth=2)
+        ax2.arrow(freq_centroid_y, freq_centroid_z, -pc1_vec_freq[1], -pc1_vec_freq[0], 
+                  color='red', width=0.1, head_width=0.2, head_length=0.15, linewidth=2)
+        
+        # Draw PC2 (green)
+        ax2.arrow(freq_centroid_y, freq_centroid_z, pc2_vec_freq[1], pc2_vec_freq[0], 
+                  color='green', width=0.1, head_width=0.2, head_length=0.15, linewidth=2)
+        ax2.arrow(freq_centroid_y, freq_centroid_z, -pc2_vec_freq[1], -pc2_vec_freq[0], 
+                  color='green', width=0.1, head_width=0.2, head_length=0.15, linewidth=2)
+        
+        # Add eigenvalue information
+        ax2.text(0.02, 0.98, f'PC1: {eigenvals[0]:.2f}\nPC2: {eigenvals[1]:.2f}', 
+                transform=ax2.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
     # Add frequency scale information
     max_freq_y = np.max(np.abs(freq_y))
     max_freq_z = np.max(np.abs(freq_z))
-    ax2.text(0.02, 0.98, f'Max freq Y: {max_freq_y:.2f} 1/µm\nMax freq Z: {max_freq_z:.2f} 1/µm', 
+    ax2.text(0.02, 0.85, f'Max freq Y: {max_freq_y:.2f} 1/µm\nMax freq Z: {max_freq_z:.2f} 1/µm', 
               transform=ax2.transAxes, verticalalignment='top',
               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     plt.tight_layout()
     plt.show()
+    
+    return pca_mip, pca_fft
 
-def visualize_in_napari(volume, mip_yz, fft_yz):
-    """Visualize volume, MIP and FFT in napari."""
-    viewer = napari.Viewer(title="Volume Crop Analysis")
-    
-    # Add the full volume crop
-    viewer.add_image(
-        volume,
-        name="Volume Crop",
-        colormap='viridis',
-        blending='additive'
-    )
-    
-    # Add MIP
-    viewer.add_image(
-        mip_yz,
-        name="X Projection (YZ MIP)",
-        colormap='plasma',
-        blending='additive'
-    )
-    
-    # Add FFT
-    viewer.add_image(
-        fft_yz,
-        name="Fourier Transform",
-        colormap='hot',
-        blending='additive'
-    )
-    
-    print("Visualization opened in napari")
-    print("Volume Crop: viridis colormap")
-    print("X Projection: plasma colormap")
-    print("Fourier Transform: hot colormap")
-    
-    return viewer
 
 def main():
     """Main function to run the volume crop analysis."""
-    print("=== Volume Crop Analysis: X Projection and Fourier Transform ===")
+    print("=== Volume Crop Analysis: X Projection and Fourier Transform with PCA ===")
     
     # Get voxel size from ND2 file
     print("\n=== Getting Voxel Size ===")
@@ -199,14 +272,10 @@ def main():
     print("\n=== Computing Fourier Transform ===")
     fft_yz = compute_fft_magnitude(mip_yz, voxel_size)
     
-    # Plot results
-    print("\n=== Plotting Results ===")
-    plot_mip_and_fft(mip_yz, fft_yz, voxel_size, CROP_START, CROP_SIZE)
-    
-    # Visualize in napari
-    print("\n=== Opening Napari Visualization ===")
-    viewer = visualize_in_napari(volume, mip_yz, fft_yz)
-    
+    # Plot results with PCA
+    print("\n=== Plotting Results with PCA ===")
+    pca_mip, pca_fft = plot_mip_and_fft_with_pca(mip_yz, fft_yz, voxel_size, CROP_START, CROP_SIZE)
+
     # Print summary
     print("\n=== Summary ===")
     print(f"Volume crop shape: {volume.shape}")
