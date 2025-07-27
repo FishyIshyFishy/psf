@@ -2,7 +2,7 @@ import numpy as np
 from scipy.ndimage import center_of_mass, map_coordinates
 from scipy.stats import skew, kurtosis
 from skimage.feature import peak_local_max
-from skimage.morphology import skeletonize_3d
+from skimage.morphology import skeletonize
 from scipy.spatial.distance import cdist
 
 def centroid_um(bead, vox_ds):
@@ -166,7 +166,7 @@ def compute_shape_metrics(bead_raw, vox):
     
     # 2) Skeleton topology
     try:
-        skeleton = skeletonize_3d(mask)
+        skeleton = skeletonize(mask)
         skeleton_coords = np.array(np.where(skeleton)).T
         
         if len(skeleton_coords) > 1:
