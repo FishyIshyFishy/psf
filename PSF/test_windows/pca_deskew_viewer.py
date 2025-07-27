@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from tifffile import imread
 
 # Configuration - Update this path to your bead TIFF file
-BEAD_TIFF_PATH = "path/to/your/bead.tiff"  # Update this path
+BEAD_TIFF_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\xy1_windows\bead_0011.tif" # Update this path
 
 def load_bead(tiff_path):
     """Load bead from TIFF file."""
