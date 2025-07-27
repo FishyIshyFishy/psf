@@ -1,20 +1,54 @@
 import numpy as np
 import napari
 import matplotlib.pyplot as plt
-from tifffile import imread
 from scipy.fft import fft2, fftshift, fftfreq
 import nd2
 
-# Configuration - Update these paths
-BEAD_TIFF_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\xy1_windows\bead_0011.tif"
+# Configuration - Update these paths and crop parameters
 ND2_FILE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
 
-def load_bead(tiff_path):
-    """Load bead from TIFF file."""
-    bead = imread(tiff_path)
-    print(f"Loaded bead with shape: {bead.shape}")
-    print(f"Bead value range: [{bead.min():.3f}, {bead.max():.3f}]")
-    return bead
+# Crop parameters - specify the region of interest in the ND2 file
+# These are in voxel coordinates (z, y, x)
+CROP_START = (50, 100, 100)  # Start coordinates (z, y, x)
+CROP_SIZE = (40, 40, 40)     # Size of the crop (z, y, x)
+
+def load_nd2_crop(nd2_path, crop_start, crop_size):
+    """Load a volume crop from ND2 file."""
+    try:
+        with nd2.ND2File(nd2_path) as f:
+            # Get the full image
+            full_image = f.asarray()
+            print(f"Full image shape: {full_image.shape}")
+            
+            # Calculate crop end coordinates
+            crop_end = (
+                crop_start[0] + crop_size[0],
+                crop_start[1] + crop_size[1], 
+                crop_start[2] + crop_size[2]
+            )
+            
+            # Ensure we don't go out of bounds
+            actual_end = (
+                min(crop_end[0], full_image.shape[0]),
+                min(crop_end[1], full_image.shape[1]),
+                min(crop_end[2], full_image.shape[2])
+            )
+            
+            # Extract the crop
+            crop = full_image[
+                crop_start[0]:actual_end[0],
+                crop_start[1]:actual_end[1],
+                crop_start[2]:actual_end[2]
+            ]
+            
+            print(f"Crop shape: {crop.shape}")
+            print(f"Crop value range: [{crop.min():.3f}, {crop.max():.3f}]")
+            
+            return crop
+            
+    except Exception as e:
+        print(f"Error loading ND2 file: {e}")
+        return None
 
 def get_voxel_size(nd2_path):
     """Get voxel size from ND2 file."""
@@ -29,10 +63,10 @@ def get_voxel_size(nd2_path):
         print("Using default voxel size: (0.2, 0.1, 0.1) µm")
         return (0.2, 0.1, 0.1)  # Default: (z, y, x) in µm
 
-def compute_yz_mip(bead):
+def compute_yz_mip(volume):
     """Compute Maximum Intensity Projection along X-axis (YZ plane)."""
     # MIP along x-axis (yz plane)
-    mip_yz = np.max(bead, axis=2)
+    mip_yz = np.max(volume, axis=2)
     
     print(f"MIP YZ shape: {mip_yz.shape}")
     print(f"MIP YZ value range: [{mip_yz.min():.3f}, {mip_yz.max():.3f}]")
@@ -57,7 +91,7 @@ def compute_fft_magnitude(image_2d, voxel_size):
 
 def create_frequency_axes(image_shape, voxel_size):
     """Create frequency axes in physical units (1/µm)."""
-    # Get Y and Z voxel sizes (assuming bead is in YZ plane)
+    # Get Y and Z voxel sizes (assuming volume is in YZ plane)
     vz, vy = voxel_size[0], voxel_size[1]  # Z and Y voxel sizes
     
     # Create frequency axes
@@ -70,10 +104,10 @@ def create_frequency_axes(image_shape, voxel_size):
     
     return freq_y_shifted, freq_z_shifted
 
-def plot_mip_and_fft(mip_yz, fft_yz, voxel_size):
+def plot_mip_and_fft(mip_yz, fft_yz, voxel_size, crop_start, crop_size):
     """Create a simple plot showing MIP and its FFT with proper scaling."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle('X Projection (YZ MIP) and Fourier Transform', fontsize=14)
+    fig.suptitle(f'X Projection (YZ MIP) and Fourier Transform\nCrop: {crop_start} to {tuple(np.array(crop_start) + np.array(crop_size))}', fontsize=14)
     
     # Create frequency axes
     freq_y, freq_z = create_frequency_axes(mip_yz.shape, voxel_size)
@@ -103,15 +137,23 @@ def plot_mip_and_fft(mip_yz, fft_yz, voxel_size):
     plt.tight_layout()
     plt.show()
 
-def visualize_in_napari(mip_yz, fft_yz):
-    """Visualize MIP and FFT in napari."""
-    viewer = napari.Viewer(title="X Projection and Fourier Transform")
+def visualize_in_napari(volume, mip_yz, fft_yz):
+    """Visualize volume, MIP and FFT in napari."""
+    viewer = napari.Viewer(title="Volume Crop Analysis")
+    
+    # Add the full volume crop
+    viewer.add_image(
+        volume,
+        name="Volume Crop",
+        colormap='viridis',
+        blending='additive'
+    )
     
     # Add MIP
     viewer.add_image(
         mip_yz,
         name="X Projection (YZ MIP)",
-        colormap='viridis',
+        colormap='plasma',
         blending='additive'
     )
     
@@ -124,33 +166,34 @@ def visualize_in_napari(mip_yz, fft_yz):
     )
     
     print("Visualization opened in napari")
-    print("X Projection: viridis colormap")
+    print("Volume Crop: viridis colormap")
+    print("X Projection: plasma colormap")
     print("Fourier Transform: hot colormap")
     
     return viewer
 
 def main():
-    """Main function to run the MIP and FFT analysis."""
-    print("=== X Projection and Fourier Transform Analysis ===")
+    """Main function to run the volume crop analysis."""
+    print("=== Volume Crop Analysis: X Projection and Fourier Transform ===")
     
     # Get voxel size from ND2 file
     print("\n=== Getting Voxel Size ===")
     voxel_size = get_voxel_size(ND2_FILE_PATH)
     
-    # Load the bead
-    try:
-        bead = load_bead(BEAD_TIFF_PATH)
-    except FileNotFoundError:
-        print(f"Error: Could not find bead file at {BEAD_TIFF_PATH}")
-        print("Please update BEAD_TIFF_PATH at the top of this script")
-        return
-    except Exception as e:
-        print(f"Error loading bead: {e}")
+    # Load the volume crop
+    print(f"\n=== Loading Volume Crop ===")
+    print(f"Crop start: {CROP_START}")
+    print(f"Crop size: {CROP_SIZE}")
+    
+    volume = load_nd2_crop(ND2_FILE_PATH, CROP_START, CROP_SIZE)
+    
+    if volume is None:
+        print("Failed to load volume crop")
         return
     
     # Compute YZ MIP
     print("\n=== Computing X Projection ===")
-    mip_yz = compute_yz_mip(bead)
+    mip_yz = compute_yz_mip(volume)
     
     # Compute FFT
     print("\n=== Computing Fourier Transform ===")
@@ -158,18 +201,20 @@ def main():
     
     # Plot results
     print("\n=== Plotting Results ===")
-    plot_mip_and_fft(mip_yz, fft_yz, voxel_size)
+    plot_mip_and_fft(mip_yz, fft_yz, voxel_size, CROP_START, CROP_SIZE)
     
     # Visualize in napari
     print("\n=== Opening Napari Visualization ===")
-    viewer = visualize_in_napari(mip_yz, fft_yz)
+    viewer = visualize_in_napari(volume, mip_yz, fft_yz)
     
     # Print summary
     print("\n=== Summary ===")
-    print(f"Original bead shape: {bead.shape}")
+    print(f"Volume crop shape: {volume.shape}")
     print(f"X projection shape: {mip_yz.shape}")
     print(f"FFT shape: {fft_yz.shape}")
     print(f"Voxel size: {voxel_size} µm")
+    print(f"Crop start: {CROP_START}")
+    print(f"Crop size: {CROP_SIZE}")
     
     # Run napari
     napari.run()
