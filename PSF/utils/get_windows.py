@@ -2,10 +2,10 @@ import time
 import numpy as np
 from skimage.filters import gaussian
 from skimage.feature import peak_local_max
-import numpy as np
 from scipy.ndimage import gaussian_filter, center_of_mass
-from skimage.feature import peak_local_max
 from skimage.measure import label
+from skimage.segmentation import flood
+
 
 def find_peaks(img, threshold_rel=0.2, min_distance=3):
     sm = gaussian(img, sigma=1)
@@ -127,46 +127,70 @@ def extract_bead_adaptive(
     img: np.ndarray,
     peak: tuple[int,int,int],
     crop_shape: tuple[int,int,int] = (6,10,10),
-    normalize: bool = True
+    normalize: bool = True,
+    threshold_rel_conn: float = 0.2
 ) -> tuple[np.ndarray, tuple[int,int,int]] | tuple[None, tuple[int,int,int]]:
+    """
+    1) Coarse crop around `peak`
+    2) Refine center by center_of_mass
+    3) Crop again around the refined center
+    4) Flood‑fill from the refined centroid to keep only its connected component
+    5) (Optional) Normalize
+    Returns (crop, refined_peak). On failure, returns (None, original_peak).
+    """
     zc, yc, xc = peak
     dz, dy, dx = crop_shape
     Z, Y, X = img.shape
 
     # 1) Coarse crop
-    z0, z1 = max(zc - dz, 0), min(zc + dz + 1, Z)
-    y0, y1 = max(yc - dy, 0), min(yc + dy + 1, Y)
-    x0, x1 = max(xc - dx, 0), min(xc + dx + 1, X)
-    crop = img[z0:z1, y0:y1, x0:x1]
-    if crop.size == 0 or crop.max() == 0:
+    z0, z1 = max(zc-dz, 0), min(zc+dz+1, Z)
+    y0, y1 = max(yc-dy, 0), min(yc+dy+1, Y)
+    x0, x1 = max(xc-dx, 0), min(xc+dx+1, X)
+    crop_coarse = img[z0:z1, y0:y1, x0:x1]
+    if crop_coarse.size == 0 or crop_coarse.max() == 0:
         return None, peak
 
-    # 2) Compute local COM (in crop‐coordinates)
-    com_z, com_y, com_x = center_of_mass(crop)
-    # If COM is nan (e.g. all zeros), bail out
-    if np.isnan(com_z + com_y + com_x):
+    # 2) Compute local COM in coarse crop
+    com_z, com_y, com_x = center_of_mass(crop_coarse)
+    if not np.isfinite(com_z+com_y+com_x):
         return None, peak
 
-    # 3) Map COM → full‐image coordinates
+    # 3) Map COM → full-image coords and re-crop
     z_ref = int(round(z0 + com_z))
     y_ref = int(round(y0 + com_y))
     x_ref = int(round(x0 + com_x))
 
-    # 4) Refined crop around (z_ref, y_ref, x_ref)
-    z0r, z1r = max(z_ref - dz, 0), min(z_ref + dz + 1, Z)
-    y0r, y1r = max(y_ref - dy, 0), min(y_ref + dy + 1, Y)
-    x0r, x1r = max(x_ref - dx, 0), min(x_ref + dx + 1, X)
+    z0r, z1r = max(z_ref-dz, 0), min(z_ref+dz+1, Z)
+    y0r, y1r = max(y_ref-dy, 0), min(y_ref+dy+1, Y)
+    x0r, x1r = max(x_ref-dx, 0), min(x_ref+dx+1, X)
     crop_ref = img[z0r:z1r, y0r:y1r, x0r:x1r]
+
     if crop_ref.size == 0 or crop_ref.max() == 0:
-        # fallback to the coarse crop if refinement went out of bounds
-        final_crop = crop
+        final_crop = crop_coarse
         refined_peak = peak
+        # relative origin for flood = (dz, dy, dx) in coarse crop
+        origin = (int(round(com_z)), int(round(com_y)), int(round(com_x)))
     else:
         final_crop = crop_ref
         refined_peak = (z_ref, y_ref, x_ref)
+        origin = (
+            z_ref - z0r,
+            y_ref - y0r,
+            x_ref - x0r
+        )
+
+    # 4) Flood-fill connectivity mask
+    seed_val = final_crop[origin]
+    tol = float(seed_val) * threshold_rel_conn
+    mask = flood(final_crop, origin, tolerance=tol, connectivity=1)
+
+    # zero out everything outside the bead's CC
+    final_crop = final_crop * mask
+    if final_crop.max() == 0:
+        return None, peak
 
     # 5) Normalize if requested
-    if normalize and final_crop.max() > 0:
+    if normalize:
         final_crop = final_crop / final_crop.max()
 
     return final_crop, refined_peak
@@ -176,36 +200,84 @@ def qc_hard_gates(bead_raw, m, vox,
                   min_snr=8.0,
                   max_bg_cv=0.6,
                   max_secondary_peak_ratio=0.65,
+                  # Shape-based QC parameters
+                  min_linearity=0.7,
+                  max_sphericity=0.15,
+                  max_planarity=0.3,
+                  min_length_width_ratio=4.0,
+                  min_width_um=0.3,
+                  max_width_um=1.2,
+                  min_thickness_um=0.3,
+                  max_thickness_um=1.2,
+                  max_tortuosity=1.15,
+                  max_width_CV=0.35,
+                  max_border_fraction=0.1,
+                  max_branches=0
                  ):
+    """
+    Comprehensive QC with shape-based filtering for narrow+elongated PSFs.
+    """
     # 1) SNR gate (needs raw intensities)
     snr = float(m.get('snr', 0.0))
     if not np.isfinite(snr) or snr < min_snr:
         return False, f"Low SNR: {snr:.1f} < {min_snr}"
 
-    # # 2) Background homogeneity (outer shell stats)
-    # zc, yc, xc = [s//2 for s in bead_raw.shape]
-    # # define a central ellipsoid ~0.6 µm laterally, 1.5 µm axially (tune if needed)
-    # rad_um = (1.5, 0.6, 0.6)  # (z,y,x) in µm
-    # rz, ry, rx = [max(1, int(round(r/v))) for r, v in zip(rad_um, vox)]
-    # zz, yy, xx = np.ogrid[:bead_raw.shape[0], :bead_raw.shape[1], :bead_raw.shape[2]]
-    # core = ((zz - zc)**2 / (rz**2) + (yy - yc)**2 / (ry**2) + (xx - xc)**2 / (rx**2)) <= 1.0
-    # shell = ~core
-    # bg_vals = bead_raw[shell]
-    # if bg_vals.size > 100:
-    #     bg_mean = np.mean(bg_vals)
-    #     bg_std  = np.std(bg_vals)
-    #     bg_cv   = bg_std / (bg_mean + 1e-9)
-    #     if bg_cv > max_bg_cv:
-    #         return False, f"High background CV: {bg_cv:.2f} > {max_bg_cv}"
-
-    # 3) Single-peak dominance inside the crop (avoid "double beads" / strong side lobes)
-    sm = bead_raw  # already reasonably smooth after optics; add Gaussian if needed
-    coords = peak_local_max(sm, threshold_rel=0.3, min_distance=3, exclude_border=False)
-    if coords.shape[0] >= 2:
-        vals = sm[tuple(coords.T)]
-        v1, v2 = np.sort(vals)[-2:] if len(vals) >= 2 else (vals.max(), 0.0)
-        if v2 / (v1 + 1e-9) > max_secondary_peak_ratio:
-            return False, f"Multiple peaks: {v2/v1:.2f} > {max_secondary_peak_ratio}"
+    # 2) Shape-based QC gates (metrics already computed in m)
+    
+    # Linearity (elongation) test
+    L = m.get('L', 0)
+    if L < min_linearity:
+        return False, f"Low linearity: {L:.2f} < {min_linearity}"
+    
+    # Sphericity test
+    S = m.get('S', 1)
+    if S > max_sphericity:
+        return False, f"High sphericity: {S:.2f} > {max_sphericity}"
+    
+    # Planarity test (avoid sheet-like blobs)
+    P = m.get('P', 0)
+    if P > max_planarity:
+        return False, f"High planarity: {P:.2f} > {max_planarity}"
+    
+    # Aspect ratio test
+    length_width_ratio = m.get('length_width_ratio', 1)
+    if length_width_ratio < min_length_width_ratio:
+        return False, f"Low length/width ratio: {length_width_ratio:.1f} < {min_length_width_ratio}"
+    
+    # Width bounds
+    width_um = m.get('width_um', 0)
+    if width_um < min_width_um or width_um > max_width_um:
+        return False, f"Width out of bounds: {width_um:.2f} µm not in [{min_width_um}, {max_width_um}]"
+    
+    # Thickness bounds
+    thickness_um = m.get('thickness_um', 0)
+    if thickness_um < min_thickness_um or thickness_um > max_thickness_um:
+        return False, f"Thickness out of bounds: {thickness_um:.2f} µm not in [{min_thickness_um}, {max_thickness_um}]"
+    
+    # Tortuosity test
+    tortuosity = m.get('tortuosity', 1)
+    if tortuosity > max_tortuosity:
+        return False, f"High tortuosity: {tortuosity:.2f} > {max_tortuosity}"
+    
+    # Cross-section uniformity
+    width_CV = m.get('width_CV', 1)
+    if width_CV > max_width_CV:
+        return False, f"High width CV: {width_CV:.2f} > {max_width_CV}"
+    
+    # Border fraction test
+    border_fraction = m.get('border_fraction', 1)
+    if border_fraction > max_border_fraction:
+        return False, f"High border fraction: {border_fraction:.2f} > {max_border_fraction}"
+    
+    # Skeleton topology test
+    branches = m.get('branches', 0)
+    if branches > max_branches:
+        return False, f"Too many branches: {branches} > {max_branches}"
+    
+    # 3) Secondary peak dominance (already computed in shape metrics)
+    secondary_peak_ratio = m.get('secondary_peak_ratio', 0)
+    if secondary_peak_ratio > max_secondary_peak_ratio:
+        return False, f"Multiple peaks: {secondary_peak_ratio:.2f} > {max_secondary_peak_ratio}"
 
     return True, ""
 
@@ -230,6 +302,19 @@ def apply_qc_filtering(bead_raw, m, vox, qc_params=None):
         min_snr=qc_params.get('min_snr', 8.0),
         max_bg_cv=qc_params.get('max_bg_cv', 0.6),
         max_secondary_peak_ratio=qc_params.get('max_secondary_peak_ratio', 0.65),
+        # Shape-based parameters
+        min_linearity=qc_params.get('min_linearity', 0.7),
+        max_sphericity=qc_params.get('max_sphericity', 0.15),
+        max_planarity=qc_params.get('max_planarity', 0.3),
+        min_length_width_ratio=qc_params.get('min_length_width_ratio', 4.0),
+        min_width_um=qc_params.get('min_width_um', 0.3),
+        max_width_um=qc_params.get('max_width_um', 1.2),
+        min_thickness_um=qc_params.get('min_thickness_um', 0.3),
+        max_thickness_um=qc_params.get('max_thickness_um', 1.2),
+        max_tortuosity=qc_params.get('max_tortuosity', 1.15),
+        max_width_CV=qc_params.get('max_width_CV', 0.35),
+        max_border_fraction=qc_params.get('max_border_fraction', 0.1),
+        max_branches=qc_params.get('max_branches', 0)
     )
     
     if not qc_passed:

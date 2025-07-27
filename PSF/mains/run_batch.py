@@ -42,6 +42,19 @@ QC_PARAMS = {
     'min_snr': 8.0,
     'max_bg_cv': 0.6,
     'max_secondary_peak_ratio': 1.,
+    # Shape-based QC parameters
+    'min_linearity': 0.7,           # Linearity (elongation) threshold
+    'max_sphericity': 0.15,         # Maximum sphericity (avoid blobs)
+    'max_planarity': 0.3,           # Maximum planarity (avoid sheets)
+    'min_length_width_ratio': 4.0,  # Minimum length/width ratio
+    'min_width_um': 0.3,            # Minimum width in µm
+    'max_width_um': 1.2,            # Maximum width in µm
+    'min_thickness_um': 0.3,        # Minimum thickness in µm
+    'max_thickness_um': 1.2,        # Maximum thickness in µm
+    'max_tortuosity': 1.15,         # Maximum tortuosity
+    'max_width_CV': 0.35,           # Maximum width coefficient of variation
+    'max_border_fraction': 0.1,     # Maximum fraction touching borders
+    'max_branches': 0               # Maximum number of skeleton branches
 }
 
 FIELDNAMES = [
@@ -128,7 +141,8 @@ def process_image(image_path, output_dir):
                 img=img_raw,
                 peak=tuple(pk),
                 crop_shape=CROP_SHAPE,
-                normalize=False
+                normalize=NORMALIZE,
+                threshold_rel_conn=0.2
             )
             
             if DEBUG:
@@ -208,7 +222,6 @@ def process_image(image_path, output_dir):
                 visualize_beads_in_napari(valid_batch_beads, image_name, batch_start, batch_size)
             else:
                 print(f"  No valid beads in batch {batch_start//batch_size + 1}")
-            
 
 def main():
     for image_path in IMAGE_PATHS:
