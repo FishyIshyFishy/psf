@@ -181,31 +181,43 @@ def analyze_volume_with_skew(volume, voxel_size=(1.0, 1.0, 1.0), threshold_perce
     final_mask_yz = energy_mask_yz & (~axis_mask_yz[:, :, None])
     final_mask_xz = energy_mask_xz & (~axis_mask_xz[:, None, :])
 
-    # Get coordinates for PCA
-    coords_yz = np.argwhere(final_mask_yz)
+    # Get coordinates for PCA - both unfiltered and filtered
+    coords_yz_unfiltered = np.argwhere(energy_mask_yz)
+    coords_yz_filtered = np.argwhere(final_mask_yz)
     coords_xz = np.argwhere(final_mask_xz)
 
-    # Estimate skew angles
-    vec_yz, angle_yz, strength_yz = estimate_skew_plane(coords_yz, dim1=1, dim2=0, shape=log_mag_yz.shape, voxel_size=voxel_size)
-    vec_xz, angle_xz, strength_xz = estimate_skew_plane(coords_xz, dim1=2, dim2=0, shape=log_mag_xz.shape, voxel_size=voxel_size)
+    # Estimate skew angles - both unfiltered and filtered for YZ
+    vec_yz_unfiltered, angle_yz_unfiltered, strength_yz_unfiltered = estimate_skew_plane(
+        coords_yz_unfiltered, dim1=1, dim2=0, shape=log_mag_yz.shape, voxel_size=voxel_size)
+    vec_yz_filtered, angle_yz_filtered, strength_yz_filtered = estimate_skew_plane(
+        coords_yz_filtered, dim1=1, dim2=0, shape=log_mag_yz.shape, voxel_size=voxel_size)
+    vec_xz, angle_xz, strength_xz = estimate_skew_plane(
+        coords_xz, dim1=2, dim2=0, shape=log_mag_xz.shape, voxel_size=voxel_size)
 
-    return log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz, vec_yz, angle_yz, strength_yz, vec_xz, angle_xz, strength_xz
+    return (log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz, 
+            vec_yz_unfiltered, angle_yz_unfiltered, strength_yz_unfiltered,
+            vec_yz_filtered, angle_yz_filtered, strength_yz_filtered,
+            vec_xz, angle_xz, strength_xz)
 
 def plot_skew_analysis(log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz,
-                      vec_yz, angle_yz, strength_yz, vec_xz, angle_xz, strength_xz,
+                      vec_yz_unfiltered, angle_yz_unfiltered, strength_yz_unfiltered,
+                      vec_yz_filtered, angle_yz_filtered, strength_yz_filtered,
+                      vec_xz, angle_xz, strength_xz,
                       crop_start, crop_size):
     """Create comprehensive plot showing skew analysis."""
     yz_proj = log_mag_yz.max(axis=2)
-
     masked_yz = np.ma.masked_where(~final_mask_yz.max(axis=2), yz_proj)
 
     z_dim, y_dim = yz_proj.shape
     center_z, center_y = z_dim // 2, y_dim // 2
-
-    vec_yz = vec_yz / np.linalg.norm(vec_yz)
     base_scale = min(z_dim, y_dim) * 0.4
 
-    dy, dz_yz = vec_yz[0] * strength_yz * base_scale, vec_yz[1] * strength_yz * base_scale
+    # Normalize vectors and calculate arrow components
+    vec_yz_unfiltered = vec_yz_unfiltered / np.linalg.norm(vec_yz_unfiltered)
+    vec_yz_filtered = vec_yz_filtered / np.linalg.norm(vec_yz_filtered)
+    
+    dy_unfiltered, dz_yz_unfiltered = vec_yz_unfiltered[0] * strength_yz_unfiltered * base_scale, vec_yz_unfiltered[1] * strength_yz_unfiltered * base_scale
+    dy_filtered, dz_yz_filtered = vec_yz_filtered[0] * strength_yz_filtered * base_scale, vec_yz_filtered[1] * strength_yz_filtered * base_scale
 
     fig, axs = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle(f'FFT Skew Analysis - YZ Projection\nCrop: {crop_start} to {tuple(np.array(crop_start) + np.array(crop_size))}', fontsize=16)
@@ -213,19 +225,20 @@ def plot_skew_analysis(log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz,
     for ax in axs:
         ax.set_facecolor('black')
 
-    # YZ projection with arrow (with all data)
+    # YZ projection with arrow (with all data) - using unfiltered PCA
     axs[0].imshow(yz_proj, cmap='inferno', origin='lower')
-    axs[0].arrow(center_y, center_z, dy, dz_yz, color='white', width=1, head_width=5, linewidth=2)
-    label_yz = place_label(center_y, center_z, dy, dz_yz, angle_yz, strength_yz, y_dim, z_dim)
-    axs[0].text(*label_yz['pos'], label_yz['text'], color='white', fontsize=14, ha='center', va='center',
+    axs[0].arrow(center_y, center_z, dy_unfiltered, dz_yz_unfiltered, color='white', width=1, head_width=5, linewidth=2)
+    label_yz_unfiltered = place_label(center_y, center_z, dy_unfiltered, dz_yz_unfiltered, angle_yz_unfiltered, strength_yz_unfiltered, y_dim, z_dim)
+    axs[0].text(*label_yz_unfiltered['pos'], label_yz_unfiltered['text'], color='white', fontsize=14, ha='center', va='center',
                bbox=dict(facecolor='black', alpha=0.3, boxstyle='round,pad=0.4'))
     axs[0].set_title("YZ Projection (All Data)", color='white')
     axs[0].tick_params(colors='white')
 
-    # YZ with excluded data removed and arrow
+    # YZ with excluded data removed and arrow - using filtered PCA
     axs[1].imshow(masked_yz, cmap='inferno', origin='lower')
-    axs[1].arrow(center_y, center_z, dy, dz_yz, color='white', width=1, head_width=5, linewidth=2)
-    axs[1].text(*label_yz['pos'], label_yz['text'], color='white', fontsize=14, ha='center', va='center',
+    axs[1].arrow(center_y, center_z, dy_filtered, dz_yz_filtered, color='white', width=1, head_width=5, linewidth=2)
+    label_yz_filtered = place_label(center_y, center_z, dy_filtered, dz_yz_filtered, angle_yz_filtered, strength_yz_filtered, y_dim, z_dim)
+    axs[1].text(*label_yz_filtered['pos'], label_yz_filtered['text'], color='white', fontsize=14, ha='center', va='center',
                bbox=dict(facecolor='black', alpha=0.3, boxstyle='round,pad=0.4'))
     axs[1].set_title("YZ Projection (Excluded Data Removed)", color='white')
     axs[1].tick_params(colors='white')
@@ -256,18 +269,24 @@ def main():
     # Analyze volume with skew estimation
     print("\n=== Analyzing FFT and Skew Angles ===")
     results = analyze_volume_with_skew(volume, voxel_size=voxel_size)
-    log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz, vec_yz, angle_yz, strength_yz, vec_xz, angle_xz, strength_xz = results
+    (log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz, 
+     vec_yz_unfiltered, angle_yz_unfiltered, strength_yz_unfiltered,
+     vec_yz_filtered, angle_yz_filtered, strength_yz_filtered,
+     vec_xz, angle_xz, strength_xz) = results
     
     # Plot results
     print("\n=== Plotting Skew Analysis ===")
     plot_skew_analysis(log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz,
-                      vec_yz, angle_yz, strength_yz, vec_xz, angle_xz, strength_xz,
+                      vec_yz_unfiltered, angle_yz_unfiltered, strength_yz_unfiltered,
+                      vec_yz_filtered, angle_yz_filtered, strength_yz_filtered,
+                      vec_xz, angle_xz, strength_xz,
                       CROP_START, CROP_SIZE)
     
     # Print summary
     print("\n=== Summary ===")
     print(f"Volume crop shape: {volume.shape}")
-    print(f"YZ skew angle: {angle_yz:.2f}° (strength: {strength_yz*100:.1f}%)")
+    print(f"YZ skew angle (unfiltered): {angle_yz_unfiltered:.2f}° (strength: {strength_yz_unfiltered*100:.1f}%)")
+    print(f"YZ skew angle (filtered): {angle_yz_filtered:.2f}° (strength: {strength_yz_filtered*100:.1f}%)")
     print(f"XZ skew angle: {angle_xz:.2f}° (strength: {strength_xz*100:.1f}%)")
     print(f"Voxel size: {voxel_size} µm")
     print(f"Crop start: {CROP_START}")
