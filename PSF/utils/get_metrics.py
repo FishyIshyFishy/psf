@@ -82,7 +82,30 @@ def compute_weighted_moments(bead, vox_ds, axis):
     kurt_u = m4 / (std_u**4) - 3 if std_u else 0.0
     return skew_u, kurt_u
 
+def compute_snr(bead, border=2):
+    """Estimate global SNR using a border‐region background."""
+    bz, by, bx = bead.shape
+    # border mask
+    bg_mask = np.zeros_like(bead, bool)
+    bg_mask[:border,:,:] = True; bg_mask[-border:,:,:] = True
+    bg_mask[:,:, :border] = True; bg_mask[:,:, -border:] = True
+    bg_vals = bead[bg_mask]
+    
+    # Handle case where flood fill has zeroed out border regions
+    if bg_vals.size == 0 or bg_vals.max() == 0:
+        # If border is all zeros, use a small constant background estimate
+        mu = 0.0
+        sigma = 1.0  # Use a small constant to avoid division by zero
+    else:
+        mu, sigma = bg_vals.mean(), bg_vals.std()
+        # If sigma is still 0 (all border values are the same), use a small constant
+        if sigma == 0:
+            sigma = 1.0
+    
+    return (bead.max() - mu) / sigma
+
 def compute_volume_ratio(bead, low=0.1, high=0.5):
+    """Volume(≥high·Imax) / Volume(≥low·Imax)."""
     imax = bead.max()
     if imax == 0:
         return np.nan
@@ -285,6 +308,7 @@ def compute_psf_metrics(bead, vox_ds):
     # --- new metrics ---
     tilt_y_deg, tilt_x_deg = compute_tilt_angles(bead, vox_ds)
     skew1, kurt1          = compute_weighted_moments(bead, vox_ds, pca1)
+    snr_val               = compute_snr(bead)
     vol_ratio_05_01       = compute_volume_ratio(bead, low=0.1, high=0.5)
     pc1_z_angle_deg       = compute_pc1_z_angle(pca1)
     astig_um              = compute_astig(f2, f3)
@@ -303,6 +327,7 @@ def compute_psf_metrics(bead, vox_ds):
         'tilt_angle_x_deg': tilt_x_deg,
         'skew_pc1':         skew1,
         'kurt_pc1':         kurt1,
+        'snr':              snr_val,
         'vol_ratio_05_01':  vol_ratio_05_01,
         'pc1_z_angle_deg':  pc1_z_angle_deg,
         'astig_um':         astig_um,

@@ -39,6 +39,7 @@ NORMALIZE = True
 # QC filtering parameters
 FILTER_BEADS = True  # Set to True to enable QC filtering
 QC_PARAMS = {
+    'min_snr': 8.0,
     'max_bg_cv': 0.6,
     'max_secondary_peak_ratio': 1.,
     # Shape-based QC parameters

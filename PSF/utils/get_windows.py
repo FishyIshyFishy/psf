@@ -182,7 +182,7 @@ def extract_bead_adaptive(
     # 4) Flood-fill connectivity mask
     seed_val = final_crop[origin]
     tol = float(seed_val) * threshold_rel_conn
-    mask = flood(final_crop, origin, tolerance=tol, connectivity=2)
+    mask = flood(final_crop, origin, tolerance=tol, connectivity=1)
 
     # zero out everything outside the bead's CC
     final_crop = final_crop * mask
