@@ -170,3 +170,69 @@ def extract_bead_adaptive(
         final_crop = final_crop / final_crop.max()
 
     return final_crop, refined_peak
+
+
+def qc_hard_gates(bead_raw, m, vox,
+                  min_snr=8.0,
+                  max_bg_cv=0.6,
+                  max_secondary_peak_ratio=0.65,
+                 ):
+    # 1) SNR gate (needs raw intensities)
+    snr = float(m.get('snr', 0.0))
+    if not np.isfinite(snr) or snr < min_snr:
+        return False, f"Low SNR: {snr:.1f} < {min_snr}"
+
+    # 2) Background homogeneity (outer shell stats)
+    zc, yc, xc = [s//2 for s in bead_raw.shape]
+    # define a central ellipsoid ~0.6 µm laterally, 1.5 µm axially (tune if needed)
+    rad_um = (1.5, 0.6, 0.6)  # (z,y,x) in µm
+    rz, ry, rx = [max(1, int(round(r/v))) for r, v in zip(rad_um, vox)]
+    zz, yy, xx = np.ogrid[:bead_raw.shape[0], :bead_raw.shape[1], :bead_raw.shape[2]]
+    core = ((zz - zc)**2 / (rz**2) + (yy - yc)**2 / (ry**2) + (xx - xc)**2 / (rx**2)) <= 1.0
+    shell = ~core
+    bg_vals = bead_raw[shell]
+    if bg_vals.size > 100:
+        bg_mean = np.mean(bg_vals)
+        bg_std  = np.std(bg_vals)
+        bg_cv   = bg_std / (bg_mean + 1e-9)
+        if bg_cv > max_bg_cv:
+            return False, f"High background CV: {bg_cv:.2f} > {max_bg_cv}"
+
+    # 3) Single-peak dominance inside the crop (avoid "double beads" / strong side lobes)
+    sm = bead_raw  # already reasonably smooth after optics; add Gaussian if needed
+    coords = peak_local_max(sm, threshold_rel=0.3, min_distance=3, exclude_border=False)
+    if coords.shape[0] >= 2:
+        vals = sm[tuple(coords.T)]
+        v1, v2 = np.sort(vals)[-2:] if len(vals) >= 2 else (vals.max(), 0.0)
+        if v2 / (v1 + 1e-9) > max_secondary_peak_ratio:
+            return False, f"Multiple peaks: {v2/v1:.2f} > {max_secondary_peak_ratio}"
+
+    return True, ""
+
+
+def robust_outlier_mask(df, cols, z=3.5):
+    X = df[cols].values.astype(float)
+    med = np.nanmedian(X, axis=0)
+    mad = np.nanmedian(np.abs(X - med), axis=0) + 1e-12
+    zscores = 0.6745 * (X - med) / mad
+    keep = np.all(np.abs(zscores) <= z, axis=1)
+    return keep
+
+
+def apply_qc_filtering(bead_raw, m, vox, qc_params=None):
+    if qc_params is None:
+        qc_params = {}
+
+    qc_passed, failure_reason = qc_hard_gates(
+        bead_raw=bead_raw, 
+        m=m, 
+        vox=vox,
+        min_snr=qc_params.get('min_snr', 8.0),
+        max_bg_cv=qc_params.get('max_bg_cv', 0.6),
+        max_secondary_peak_ratio=qc_params.get('max_secondary_peak_ratio', 0.65),
+    )
+    
+    if not qc_passed:
+        return None, False, failure_reason
+    
+    return True, ""
