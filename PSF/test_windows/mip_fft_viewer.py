@@ -148,6 +148,9 @@ def estimate_skew_plane(coords, dim1, dim2, shape, voxel_size, threshold_percent
     if vec[1] < 0:
         vec = -vec
 
+    # For plotting: we need to swap the components
+    # vec[0] should be Z (vertical), vec[1] should be Y (horizontal)
+    # So angle should be arctan2(dz, dy) where dz = vec[0], dy = vec[1]
     angle = np.arctan2(vec[0], vec[1]) * 180 / np.pi
     return vec, angle, strength
 
@@ -216,8 +219,9 @@ def plot_skew_analysis(log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz,
     vec_yz_unfiltered = vec_yz_unfiltered / np.linalg.norm(vec_yz_unfiltered)
     vec_yz_filtered = vec_yz_filtered / np.linalg.norm(vec_yz_filtered)
     
-    dy_unfiltered, dz_yz_unfiltered = vec_yz_unfiltered[0] * strength_yz_unfiltered * base_scale, vec_yz_unfiltered[1] * strength_yz_unfiltered * base_scale
-    dy_filtered, dz_yz_filtered = vec_yz_filtered[0] * strength_yz_filtered * base_scale, vec_yz_filtered[1] * strength_yz_filtered * base_scale
+    # For plotting: vec[0] is Z (vertical), vec[1] is Y (horizontal)
+    dz_yz_unfiltered, dy_unfiltered = vec_yz_unfiltered[0] * strength_yz_unfiltered * base_scale, vec_yz_unfiltered[1] * strength_yz_unfiltered * base_scale
+    dz_yz_filtered, dy_filtered = vec_yz_filtered[0] * strength_yz_filtered * base_scale, vec_yz_filtered[1] * strength_yz_filtered * base_scale
 
     fig, axs = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle(f'FFT Skew Analysis - YZ Projection\nCrop: {crop_start} to {tuple(np.array(crop_start) + np.array(crop_size))}', fontsize=16)
