@@ -33,7 +33,7 @@ OUTPUT_ROOT = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync
 DOWNSAMPLE = (2, 2, 2)  # Updated to match run_image.py
 THRESH_REL = 0.2
 MIN_DISTANCE = 3
-CROP_SHAPE = (80, 20, 20)
+CROP_SHAPE = (40,40,40)
 NORMALIZE = True
 
 # QC filtering parameters
@@ -41,7 +41,7 @@ FILTER_BEADS = True  # Set to True to enable QC filtering
 QC_PARAMS = {
     'min_snr': 8.0,
     'max_bg_cv': 0.6,
-    'max_secondary_peak_ratio': 0.65,
+    'max_secondary_peak_ratio': 1.,
 }
 
 FIELDNAMES = [
