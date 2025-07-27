@@ -9,7 +9,7 @@ import time
 import napari
 import pandas as pd
 
-DEBUG = True
+DEBUG = False
 
 IMAGE_PATHS = [
     r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2",
@@ -29,12 +29,12 @@ IMAGE_PATHS = [
     r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-neg0060-slit-2250-z-258617_XY003_T001__Channel_GFP-MPSOPi.nd2",
     r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-neg0060-slit-2250-z-258617_XY004_T001__Channel_GFP-MPSOPi.nd2"
 ]
-OUTPUT_ROOT = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\250725_RESULTS"  # All results will go here
+OUTPUT_ROOT = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\250726_RESULTS"  # All results will go here
 DOWNSAMPLE = (2, 2, 2)  # Updated to match run_image.py
 THRESH_REL = 0.2
 MIN_DISTANCE = 3
 CROP_SHAPE = (80, 20, 20)
-NORMALIZE = True
+NORMALIZE = False
 
 # No QC filtering - process all beads
 FILTER_BEADS = False
