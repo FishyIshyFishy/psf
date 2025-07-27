@@ -90,8 +90,19 @@ def compute_snr(bead, border=2):
     bg_mask[:border,:,:] = True; bg_mask[-border:,:,:] = True
     bg_mask[:,:, :border] = True; bg_mask[:,:, -border:] = True
     bg_vals = bead[bg_mask]
-    mu, sigma = bg_vals.mean(), bg_vals.std()
-    return (bead.max() - mu) / sigma if sigma > 0 else np.nan
+    
+    # Handle case where flood fill has zeroed out border regions
+    if bg_vals.size == 0 or bg_vals.max() == 0:
+        # If border is all zeros, use a small constant background estimate
+        mu = 0.0
+        sigma = 1.0  # Use a small constant to avoid division by zero
+    else:
+        mu, sigma = bg_vals.mean(), bg_vals.std()
+        # If sigma is still 0 (all border values are the same), use a small constant
+        if sigma == 0:
+            sigma = 1.0
+    
+    return (bead.max() - mu) / sigma
 
 def compute_volume_ratio(bead, low=0.1, high=0.5):
     """Volume(≥high·Imax) / Volume(≥low·Imax)."""
