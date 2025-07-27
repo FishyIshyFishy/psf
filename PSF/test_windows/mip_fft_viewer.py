@@ -195,56 +195,39 @@ def plot_skew_analysis(log_mag_yz, log_mag_xz, final_mask_yz, final_mask_xz,
                       crop_start, crop_size):
     """Create comprehensive plot showing skew analysis."""
     yz_proj = log_mag_yz.max(axis=2)
-    xz_proj = log_mag_xz.max(axis=1)
 
     masked_yz = np.ma.masked_where(~final_mask_yz.max(axis=2), yz_proj)
-    masked_xz = np.ma.masked_where(~final_mask_xz.max(axis=1), xz_proj)
 
     z_dim, y_dim = yz_proj.shape
-    _, x_dim = xz_proj.shape
     center_z, center_y = z_dim // 2, y_dim // 2
-    center_x = x_dim // 2
 
     vec_yz = vec_yz / np.linalg.norm(vec_yz)
-    vec_xz = vec_xz / np.linalg.norm(vec_xz)
-    base_scale = min(z_dim, y_dim, x_dim) * 0.4
+    base_scale = min(z_dim, y_dim) * 0.4
 
     dy, dz_yz = vec_yz[0] * strength_yz * base_scale, vec_yz[1] * strength_yz * base_scale
-    dx, dz_xz = vec_xz[0] * strength_xz * base_scale, vec_xz[1] * strength_xz * base_scale
 
-    fig, axs = plt.subplots(2, 2, figsize=(14, 12))
-    fig.suptitle(f'FFT Skew Analysis\nCrop: {crop_start} to {tuple(np.array(crop_start) + np.array(crop_size))}', fontsize=16)
+    fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle(f'FFT Skew Analysis - YZ Projection\nCrop: {crop_start} to {tuple(np.array(crop_start) + np.array(crop_size))}', fontsize=16)
     
-    for ax in axs.flat:
+    for ax in axs:
         ax.set_facecolor('black')
 
-    # YZ projection with arrow
-    axs[0, 0].imshow(yz_proj, cmap='inferno', origin='lower')
-    axs[0, 0].arrow(center_y, center_z, dy, dz_yz, color='white', width=1, head_width=5, linewidth=2)
+    # YZ projection with arrow (with all data)
+    axs[0].imshow(yz_proj, cmap='inferno', origin='lower')
+    axs[0].arrow(center_y, center_z, dy, dz_yz, color='white', width=1, head_width=5, linewidth=2)
     label_yz = place_label(center_y, center_z, dy, dz_yz, angle_yz, strength_yz, y_dim, z_dim)
-    axs[0, 0].text(*label_yz['pos'], label_yz['text'], color='white', fontsize=14, ha='center', va='center',
-                   bbox=dict(facecolor='black', alpha=0.3, boxstyle='round,pad=0.4'))
-    axs[0, 0].set_title("FFT Max Projection (YZ)", color='white')
-    axs[0, 0].tick_params(colors='white')
+    axs[0].text(*label_yz['pos'], label_yz['text'], color='white', fontsize=14, ha='center', va='center',
+               bbox=dict(facecolor='black', alpha=0.3, boxstyle='round,pad=0.4'))
+    axs[0].set_title("YZ Projection (All Data)", color='white')
+    axs[0].tick_params(colors='white')
 
-    # XZ projection with arrow
-    axs[0, 1].imshow(xz_proj, cmap='inferno', origin='lower')
-    axs[0, 1].arrow(center_x, center_z, dx, dz_xz, color='white', width=1, head_width=5, linewidth=2)
-    label_xz = place_label(center_x, center_z, dx, dz_xz, angle_xz, strength_xz, x_dim, z_dim)
-    axs[0, 1].text(*label_xz['pos'], label_xz['text'], color='white', fontsize=14, ha='center', va='center',
-                   bbox=dict(facecolor='black', alpha=0.3, boxstyle='round,pad=0.4'))
-    axs[0, 1].set_title("FFT Max Projection (XZ)", color='white')
-    axs[0, 1].tick_params(colors='white')
-
-    # YZ with excluded data removed
-    axs[1, 0].imshow(masked_yz, cmap='inferno', origin='lower')
-    axs[1, 0].set_title("YZ with Excluded Data Removed", color='white')
-    axs[1, 0].tick_params(colors='white')
-
-    # XZ with excluded data removed
-    axs[1, 1].imshow(masked_xz, cmap='inferno', origin='lower')
-    axs[1, 1].set_title("XZ with Excluded Data Removed", color='white')
-    axs[1, 1].tick_params(colors='white')
+    # YZ with excluded data removed and arrow
+    axs[1].imshow(masked_yz, cmap='inferno', origin='lower')
+    axs[1].arrow(center_y, center_z, dy, dz_yz, color='white', width=1, head_width=5, linewidth=2)
+    axs[1].text(*label_yz['pos'], label_yz['text'], color='white', fontsize=14, ha='center', va='center',
+               bbox=dict(facecolor='black', alpha=0.3, boxstyle='round,pad=0.4'))
+    axs[1].set_title("YZ Projection (Excluded Data Removed)", color='white')
+    axs[1].tick_params(colors='white')
 
     fig.tight_layout()
     fig.patch.set_facecolor('black')
