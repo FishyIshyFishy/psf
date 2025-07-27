@@ -7,12 +7,13 @@ from sklearn.decomposition import PCA
 import nd2
 
 # Configuration - Update these paths and crop parameters
-ND2_FILE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
+ND2_FILE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2"
+
 
 # Crop parameters - specify the region of interest in the ND2 file
 # These are in voxel coordinates (z, y, x)
 CROP_START = (50, 100, 100)  # Start coordinates (z, y, x)
-CROP_SIZE = (40, 40, 40)     # Size of the crop (z, y, x)
+CROP_SIZE = (800, 800,800)     # Size of the crop (z, y, x)
 
 def load_nd2_crop(nd2_path, crop_start, crop_size):
     """Load a volume crop from ND2 file."""
