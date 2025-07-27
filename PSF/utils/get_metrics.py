@@ -1,9 +1,5 @@
 import numpy as np
 from scipy.ndimage import center_of_mass, map_coordinates
-from scipy.stats import skew, kurtosis
-from skimage.feature import peak_local_max
-from skimage.morphology import skeletonize
-from scipy.spatial.distance import cdist
 
 def centroid_um(bead, vox_ds):
     cz, cy, cx = center_of_mass(bead)
@@ -54,6 +50,10 @@ def sample_profile(bead, center_phys, axis, vox_ds, half_length=5.0, num_pts=200
 def fwhm_along_axis(bead, center_phys, axis, vox_ds, half_length=5.0, num_pts=200, label=None):
     return sample_profile(bead, center_phys, axis, vox_ds, half_length=half_length, num_pts=num_pts, label=label)
 
+import numpy as np
+from scipy.ndimage import center_of_mass, map_coordinates
+from scipy.stats import skew, kurtosis  # for weighted moments, if you prefer scipy routines
+
 def compute_tilt_angles(bead, vox_ds):
     """Fit 2D centroid drift per Z-slice → tilt angles in degrees."""
     zs = np.arange(bead.shape[0])
@@ -90,22 +90,11 @@ def compute_snr(bead, border=2):
     bg_mask[:border,:,:] = True; bg_mask[-border:,:,:] = True
     bg_mask[:,:, :border] = True; bg_mask[:,:, -border:] = True
     bg_vals = bead[bg_mask]
-    
-    # Handle case where flood fill has zeroed out border regions
-    if bg_vals.size == 0 or bg_vals.max() == 0:
-        # If border is all zeros, use a small constant background estimate
-        mu = 0.0
-        sigma = 1.0  # Use a small constant to avoid division by zero
-    else:
-        mu, sigma = bg_vals.mean(), bg_vals.std()
-        # If sigma is still 0 (all border values are the same), use a small constant
-        if sigma == 0:
-            sigma = 1.0
-    
-    return (bead.max() - mu) / sigma
+    mu, sigma = bg_vals.mean(), bg_vals.std()
+    return (bead.max() - mu) / sigma if sigma > 0 else np.nan
 
 def compute_volume_ratio(bead, low=0.1, high=0.5):
-    """Volume(≥high·Imax) / Volume(≥low·Imax)."""
+    """Volume(≥high·Imax) / Volume(≥low·Imax)."""
     imax = bead.max()
     if imax == 0:
         return np.nan
@@ -122,178 +111,6 @@ def compute_pc1_z_angle(axis1):
 def compute_astig(f2, f3):
     """Astigmatism metric = |FWHM_x − FWHM_y|."""
     return abs(f2 - f3)
-
-def compute_shape_metrics(bead_raw, vox):
-    """
-    Compute comprehensive shape metrics for QC.
-    
-    Args:
-        bead_raw: Raw bead data (unnormalized)
-        vox: Voxel size tuple (vz, vy, vx)
-    
-    Returns:
-        Dictionary of shape metrics
-    """
-    # Create binary mask from non-zero regions
-    mask = bead_raw > 0
-    
-    if mask.sum() < 10:  # Too small to analyze
-        return None
-    
-    # Get coordinates of non-zero voxels
-    coords = np.array(np.where(mask)).T
-    intensities = bead_raw[mask]
-    
-    # 1) Moment/PCA-based elongation tests
-    # Compute intensity-weighted covariance matrix
-    centroid = np.average(coords, weights=intensities, axis=0)
-    coords_centered = coords - centroid
-    
-    # Weighted covariance matrix
-    cov_matrix = np.zeros((3, 3))
-    for i in range(3):
-        for j in range(3):
-            cov_matrix[i, j] = np.average(
-                coords_centered[:, i] * coords_centered[:, j], 
-                weights=intensities
-            )
-    
-    # Eigenvalues (sorted in descending order)
-    eigenvals, eigenvecs = np.linalg.eigh(cov_matrix)
-    eigenvals = eigenvals[::-1]  # Sort descending
-    eigenvecs = eigenvecs[:, ::-1]  # Sort descending
-    
-    # Shape metrics
-    lambda1, lambda2, lambda3 = eigenvals
-    
-    # Linearity (elongation)
-    L = (lambda1 - lambda2) / lambda1 if lambda1 > 0 else 0
-    
-    # Sphericity
-    S = lambda3 / lambda1 if lambda1 > 0 else 1
-    
-    # Planarity
-    P = (lambda2 - lambda3) / lambda1 if lambda1 > 0 else 0
-    
-    # 2) Skeleton topology
-    try:
-        skeleton = skeletonize(mask)
-        skeleton_coords = np.array(np.where(skeleton)).T
-        
-        if len(skeleton_coords) > 1:
-            # Find endpoints and branch points
-            # Simple heuristic: count neighbors for each skeleton point
-            distances = cdist(skeleton_coords, skeleton_coords)
-            neighbor_counts = np.sum(distances <= 1.5, axis=1) - 1  # -1 to exclude self
-            
-            endpoints = np.sum(neighbor_counts == 1)
-            branches = np.sum(neighbor_counts > 2)
-            
-            # Tortuosity: skeleton length / end-to-end distance
-            if endpoints >= 2:
-                # Find endpoints (points with only 1 neighbor)
-                endpoint_indices = np.where(neighbor_counts == 1)[0]
-                if len(endpoint_indices) >= 2:
-                    # Use first two endpoints
-                    end1, end2 = skeleton_coords[endpoint_indices[0]], skeleton_coords[endpoint_indices[1]]
-                    end_to_end_dist = np.linalg.norm(end2 - end1)
-                    skeleton_length = len(skeleton_coords)  # Approximate
-                    tortuosity = skeleton_length / end_to_end_dist if end_to_end_dist > 0 else 1
-                else:
-                    tortuosity = 1
-            else:
-                tortuosity = 1
-        else:
-            endpoints = 0
-            branches = 0
-            tortuosity = 1
-            
-    except Exception:
-        endpoints = 0
-        branches = 0
-        tortuosity = 1
-    
-    # 3) Cross-section uniformity along PC1 axis
-    # Project coordinates onto PC1 axis
-    pc1_proj = np.dot(coords_centered, eigenvecs[:, 0])
-    
-    # Bin along PC1 axis and compute width in each bin
-    n_bins = min(10, len(pc1_proj) // 5)  # Adaptive binning
-    if n_bins > 1:
-        bins = np.linspace(pc1_proj.min(), pc1_proj.max(), n_bins + 1)
-        widths = []
-        
-        for i in range(n_bins):
-            mask_bin = (pc1_proj >= bins[i]) & (pc1_proj < bins[i + 1])
-            if mask_bin.sum() > 0:
-                # Compute width in this bin (projection onto PC2)
-                coords_bin = coords_centered[mask_bin]
-                pc2_proj = np.dot(coords_bin, eigenvecs[:, 1])
-                width = np.std(pc2_proj) * 2  # 2*std as width measure
-                widths.append(width)
-        
-        if widths:
-            width_CV = np.std(widths) / np.mean(widths) if np.mean(widths) > 0 else 1
-        else:
-            width_CV = 1
-    else:
-        width_CV = 1
-    
-    # 4) Border fraction
-    border_voxels = 0
-    total_voxels = mask.sum()
-    
-    # Check if mask touches any border
-    if (mask[0, :, :].any() or mask[-1, :, :].any() or 
-        mask[:, 0, :].any() or mask[:, -1, :].any() or
-        mask[:, :, 0].any() or mask[:, :, -1].any()):
-        # Count border voxels
-        border_mask = np.zeros_like(mask)
-        border_mask[0, :, :] = mask[0, :, :]
-        border_mask[-1, :, :] = mask[-1, :, :]
-        border_mask[:, 0, :] = mask[:, 0, :]
-        border_mask[:, -1, :] = mask[:, -1, :]
-        border_mask[:, :, 0] = mask[:, :, 0]
-        border_mask[:, :, -1] = mask[:, :, -1]
-        border_voxels = border_mask.sum()
-    
-    border_fraction = border_voxels / total_voxels if total_voxels > 0 else 1
-    
-    # 5) Secondary peak dominance
-    coords_peaks = peak_local_max(bead_raw, threshold_rel=0.3, min_distance=3, exclude_border=False)
-    if coords_peaks.shape[0] >= 2:
-        vals = bead_raw[tuple(coords_peaks.T)]
-        v1, v2 = np.sort(vals)[-2:] if len(vals) >= 2 else (vals.max(), 0.0)
-        secondary_peak_ratio = v2 / (v1 + 1e-9)
-    else:
-        secondary_peak_ratio = 0
-    
-    # 6) Physical dimensions (in µm)
-    # Convert eigenvalues to physical dimensions
-    length_um = np.sqrt(lambda1) * 2 * np.sqrt(2)  # 2*std approximation
-    width_um = np.sqrt(lambda2) * 2 * np.sqrt(2)
-    thickness_um = np.sqrt(lambda3) * 2 * np.sqrt(2)
-    
-    # Aspect ratios
-    length_width_ratio = length_um / width_um if width_um > 0 else 1
-    width_thickness_ratio = width_um / thickness_um if thickness_um > 0 else 1
-    
-    return {
-        'L': L,  # Linearity
-        'S': S,  # Sphericity
-        'P': P,  # Planarity
-        'endpoints': endpoints,
-        'branches': branches,
-        'tortuosity': tortuosity,
-        'width_CV': width_CV,
-        'border_fraction': border_fraction,
-        'secondary_peak_ratio': secondary_peak_ratio,
-        'length_um': length_um,
-        'width_um': width_um,
-        'thickness_um': thickness_um,
-        'length_width_ratio': length_width_ratio,
-        'width_thickness_ratio': width_thickness_ratio
-    }
 
 def compute_psf_metrics(bead, vox_ds):
     # --- basic metrics (unchanged) ---
@@ -313,10 +130,7 @@ def compute_psf_metrics(bead, vox_ds):
     pc1_z_angle_deg       = compute_pc1_z_angle(pca1)
     astig_um              = compute_astig(f2, f3)
 
-    # --- shape metrics ---
-    shape_metrics = compute_shape_metrics(bead, vox_ds)
-
-    result = {
+    return {
         # existing outputs
         'centroid_z_um': cz,    'centroid_y_um': cy,    'centroid_x_um': cx,
         'fwhm_z_um':     fz,    'fwhm_y_um':     fy,    'fwhm_x_um':     fx,
@@ -332,9 +146,3 @@ def compute_psf_metrics(bead, vox_ds):
         'pc1_z_angle_deg':  pc1_z_angle_deg,
         'astig_um':         astig_um,
     }
-    
-    # Add shape metrics if available
-    if shape_metrics is not None:
-        result.update(shape_metrics)
-    
-    return result

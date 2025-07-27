@@ -31,20 +31,7 @@ FILTER_BEADS = False  # Set to True to enable QC filtering
 QC_PARAMS = {
     'min_snr': 8.0,
     'max_bg_cv': 0.6,
-    'max_secondary_peak_ratio': 0.65,
-    # Shape-based QC parameters
-    'min_linearity': 0.7,           # Linearity (elongation) threshold
-    'max_sphericity': 0.15,         # Maximum sphericity (avoid blobs)
-    'max_planarity': 0.3,           # Maximum planarity (avoid sheets)
-    'min_length_width_ratio': 4.0,  # Minimum length/width ratio
-    'min_width_um': 0.3,            # Minimum width in µm
-    'max_width_um': 1.2,            # Maximum width in µm
-    'min_thickness_um': 0.3,        # Minimum thickness in µm
-    'max_thickness_um': 1.2,        # Maximum thickness in µm
-    'max_tortuosity': 1.15,         # Maximum tortuosity
-    'max_width_CV': 0.35,           # Maximum width coefficient of variation
-    'max_border_fraction': 0.1,     # Maximum fraction touching borders
-    'max_branches': 0               # Maximum number of skeleton branches
+    'max_secondary_peak_ratio': 0.65
 }
 
 
@@ -99,8 +86,7 @@ def main():
                 img=img_raw,
                 peak=tuple(pk),
                 crop_shape=CROP_SHAPE,
-                normalize=NORMALIZE,
-                threshold_rel_conn=0.2
+                normalize=False
             )
             
             if bead_raw is None or np.count_nonzero(bead_raw) < 10:
@@ -148,6 +134,7 @@ def main():
             print(f'Processed peak {idx} in time {(time.time() - tic):.2f}')
     
     print(f'QC Summary: {passed_beads}/{total_beads} beads passed filtering')
+
 
 if __name__ == '__main__':
     main()
