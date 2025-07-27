@@ -233,6 +233,6 @@ def apply_qc_filtering(bead_raw, m, vox, qc_params=None):
     )
     
     if not qc_passed:
-        return None, False, failure_reason
+        return False, failure_reason
     
     return True, ""

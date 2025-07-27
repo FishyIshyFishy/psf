@@ -36,13 +36,8 @@ MIN_DISTANCE = 3
 CROP_SHAPE = (80, 20, 20)
 NORMALIZE = True
 
-# QC filtering parameters
-FILTER_BEADS = True  # Set to True to enable QC filtering
-QC_PARAMS = {
-    'min_snr': 8.0,
-    'max_bg_cv': 0.6,
-    'max_secondary_peak_ratio': 0.65,
-}
+# No QC filtering - process all beads
+FILTER_BEADS = False
 
 FIELDNAMES = [
     'bead_index', 'peak_z', 'peak_y', 'peak_x',
@@ -55,10 +50,6 @@ FIELDNAMES = [
     'snr', 'vol_ratio_05_01',
     'pc1_z_angle_deg', 'astig_um'
 ]
-
-# Add QC fields if filtering is enabled
-if FILTER_BEADS:
-    FIELDNAMES.extend(['qc_passed', 'qc_failure_reason'])
 
 def visualize_beads_in_napari(beads, image_name, start_idx=0, batch_size=20):
     viewer = napari.Viewer(title=f"Beads from {image_name} (batch {start_idx//batch_size + 1})")
@@ -128,7 +119,7 @@ def process_image(image_path, output_dir):
                 img=img_raw,
                 peak=tuple(pk),
                 crop_shape=CROP_SHAPE,
-                normalize=False
+                normalize=NORMALIZE
             )
             
             if DEBUG:
@@ -142,28 +133,11 @@ def process_image(image_path, output_dir):
             # Compute metrics on raw bead
             m = get_metrics.compute_psf_metrics(bead_raw, vox)
             
-            # Apply QC filtering if enabled
-            if FILTER_BEADS:
-                qc_passed, failure_reason = get_windows.apply_qc_filtering(
-                    bead_raw=bead_raw,
-                    m=m,
-                    vox=vox,
-                    qc_params=QC_PARAMS
-                )
-                
-                if not qc_passed:
-                    if DEBUG:
-                        print(f'  Peak {idx} failed QC: {failure_reason}')
-                    continue
-                
-                passed_beads += 1
-            else:
-                qc_passed = True
-                failure_reason = ""
+            # No QC filtering - process all beads
+            passed_beads += 1
             
             if DEBUG:
-                if qc_passed:
-                    valid_bead_indices.append(idx)
+                valid_bead_indices.append(idx)
 
             bead_path = os.path.join(output_dir, f'bead_{idx:04d}.tiff')
             imwrite(bead_path, bead_raw.astype(np.float32))
@@ -177,16 +151,11 @@ def process_image(image_path, output_dir):
                 **m
             }
             
-            # Add QC information if filtering is enabled
-            if FILTER_BEADS:
-                rec['qc_passed'] = qc_passed
-                rec['qc_failure_reason'] = failure_reason
-            
             writer.writerow(rec)
             csvfile.flush()
 
     print(f'  Done: {len(peaks)} peaks processed, results in {output_dir}')
-    print(f'  QC Summary: {passed_beads}/{total_beads} beads passed filtering')
+    print(f'  Summary: {passed_beads}/{total_beads} beads processed')
     toc = time.time()
     print(f'  Time taken: {toc - tic} seconds')
     
