@@ -27,7 +27,7 @@ CROP_SHAPE = (80, 20, 20)  # (z, y, x) half-sizes
 NORMALIZE = False
 
 # QC filtering parameters
-FILTER_BEADS = True  # Set to True to enable QC filtering
+FILTER_BEADS = False  # Set to True to enable QC filtering
 QC_PARAMS = {
     'min_snr': 8.0,
     'max_bg_cv': 0.6,
