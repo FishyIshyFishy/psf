@@ -8,7 +8,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 # ─────────────────────────────────────────────────────────────────────
-RESULTS_ROOT = Path(r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\250725_RESULTS")
+RESULTS_ROOT = Path(r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\250726_RESULTS")
 OUTPUT_PATH  = r'C:\Users\singhi7\Documents\psf\PCA_pc1bybc2.png'
 
 # List of all FWHM metric columns you want to use for outlier filtering:

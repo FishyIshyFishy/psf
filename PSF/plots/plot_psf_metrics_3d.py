@@ -9,11 +9,11 @@ import seaborn as sns
 
 # ---- Default metrics to plot ----
 DEFAULT_METRICS = [
-    'fwhm_z_um', 'fwhm_y_um', 'fwhm_x_um',
+    # 'fwhm_z_um', 'fwhm_y_um', 'fwhm_x_um',
     'fwhm_pca1_um', 'fwhm_pca2_um', 'fwhm_pca3_um',
     'tilt_angle_y_deg', 'tilt_angle_x_deg',
     'skew_pc1', 'kurt_pc1',
-    'snr', 'vol_ratio_05_01',
+    # 'snr', 'vol_ratio_05_01',
     'pc1_z_angle_deg', 'astig_um'
 ]
 
@@ -81,7 +81,12 @@ def plot_metric_kde(df, metrics=None):
         ax = axes.flat[i]
         data = df[metric].dropna()
         if len(data) > 1:
+            # # Plot histogram
+            # ax.hist(data, bins=20, density=True, alpha=0.3, color='gray', edgecolor='black', label='Histogram')
+            # Plot KDE
             sns.kdeplot(data, fill=True, bw_adjust=1, ax=ax, color='slateblue')
+            # Plot rug
+            sns.rugplot(data, ax=ax, color='black', height=0.05)
             ax.set_title(metric.replace('_', ' '), fontsize=10)
             ax.set_xlabel(metric.replace('_', ' '))
             ax.set_ylabel('Density')
@@ -169,7 +174,7 @@ def filter_outliers_fwhm(df, fwhm_metrics=None, iqr_factor=1.5):
 
 if __name__ == '__main__':
     # User-editable path to CSV
-    CSV_PATH = r'C:\Users\ishaa\OneDrive\Documents\VIBES2025\biomiid_stuff\psf\results.csv' # <-- Edit as needed
+    CSV_PATH = r'C:\Users\singhi7\Documents\psf\results.csv' # <-- Edit as needed
     print(f"Loading metrics from: {CSV_PATH}")
     df = pd.read_csv(CSV_PATH)
 
@@ -190,13 +195,13 @@ if __name__ == '__main__':
     # Filter outliers based on FWHM metrics
     df_filt = filter_outliers_fwhm(df)
 
-    # Plot all metrics for inlier beads
+    # # Plot all metrics for inlier beads
     # plot_metric_scatter_3d(df_filt)
     plot_metric_kde(df_filt)
     # plot_metric_boxplot(df_filt)
 
-    # Plot PCA quiver if possible
-    if all(col in df_filt.columns for col in ['pca_axis1', 'x_um', 'y_um', 'z_um']):
-        plot_pca_quiver(df_filt, vox_ds=(1.0, 1.0, 1.0))  # Edit vox_ds as needed
-    else:
-        print("PCA quiver plot skipped (missing columns)")
+    # # Plot PCA quiver if possible
+    # if all(col in df_filt.columns for col in ['pca_axis1', 'x_um', 'y_um', 'z_um']):
+    #     plot_pca_quiver(df_filt, vox_ds=(1.0, 1.0, 1.0))  # Edit vox_ds as needed
+    # else:
+    #     print("PCA quiver plot skipped (missing columns)")
