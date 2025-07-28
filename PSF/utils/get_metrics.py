@@ -112,7 +112,7 @@ def compute_astig(f2, f3):
     """Astigmatism metric = |FWHM_x − FWHM_y|."""
     return abs(f2 - f3)
 
-def compute_psf_metrics(bead, vox_ds):
+def compute_psf_metrics(bead, vox_ds, debug_mode=False):
     # --- basic metrics (unchanged) ---
     cz, cy, cx = centroid_um(bead, vox_ds)
     fz, fy, fx = fwhm_z_um(bead, vox_ds), fwhm_y_um(bead, vox_ds), fwhm_x_um(bead, vox_ds)
@@ -129,6 +129,19 @@ def compute_psf_metrics(bead, vox_ds):
     vol_ratio_05_01       = compute_volume_ratio(bead, low=0.1, high=0.5)
     pc1_z_angle_deg       = compute_pc1_z_angle(pca1)
     astig_um              = compute_astig(f2, f3)
+
+    # Debug output if enabled
+    if debug_mode:
+        print(f"  Debug: Computing metrics for bead shape {bead.shape}")
+        print(f"    Centroid: ({cz:.2f}, {cy:.2f}, {cx:.2f}) µm")
+        print(f"    FWHM (Z,Y,X): ({fz:.2f}, {fy:.2f}, {fx:.2f}) µm")
+        print(f"    PCA FWHM: ({f1:.2f}, {f2:.2f}, {f3:.2f}) µm")
+        print(f"    PCA axes: {pca1}, {pca2}, {pca3}")
+        print(f"    Tilt angles: Y={tilt_y_deg:.1f}°, X={tilt_x_deg:.1f}°")
+        print(f"    SNR: {snr_val:.1f}")
+        print(f"    Volume ratio: {vol_ratio_05_01:.2f}")
+        print(f"    PC1-Z angle: {pc1_z_angle_deg:.1f}°")
+        print(f"    Astigmatism: {astig_um:.2f} µm")
 
     return {
         # existing outputs
