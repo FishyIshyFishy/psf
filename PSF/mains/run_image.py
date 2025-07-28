@@ -109,10 +109,10 @@ def main():
                 
                 # Create debug visualization in Napari
                 if idx == 0:  # Only show first bead for debug
-                    viewer = napari.Viewer()
+                    viewer = napari.Viewer(ndisplay=3)  # Use 3D display for proper vector visualization
                     
                     # Add the bead volume
-                    viewer.add_image(bead_raw, name=f'Bead {idx}', rendering='mip', colormap='gray')
+                    viewer.add_image(bead_raw, name=f'Bead {idx}', rendering='attenuated_mip', colormap='gray')
                     
                     # Add PCA arrows if available
                     if 'pca_axis1' in m and 'pca_axis2' in m and 'pca_axis3' in m:
@@ -122,36 +122,45 @@ def main():
                         # Create arrow vectors for PCA axes
                         arrow_length = min(bead_raw.shape) * 0.4
                         
-                        # Convert PCA axes from lists to numpy arrays
-                        pca1 = np.array(m['pca_axis1'])
-                        pca2 = np.array(m['pca_axis2'])
-                        pca3 = np.array(m['pca_axis3'])
+                        # Convert PCA axes from lists to numpy arrays (these are in µm coordinates)
+                        pca1_phys = np.array(m['pca_axis1'])
+                        pca2_phys = np.array(m['pca_axis2'])
+                        pca3_phys = np.array(m['pca_axis3'])
                         
-                        # Normalize the PCA vectors
-                        pca1 = pca1 / np.linalg.norm(pca1)
-                        pca2 = pca2 / np.linalg.norm(pca2)
-                        pca3 = pca3 / np.linalg.norm(pca3)
+                        # Convert from physical units (µm) to voxel coordinates
+                        # axis_vox = axis_phys / voxel_size
+                        pca1_vox = pca1_phys / np.array(vox)
+                        pca2_vox = pca2_phys / np.array(vox)
+                        pca3_vox = pca3_phys / np.array(vox)
+                        
+                        # Normalize the PCA vectors in voxel space
+                        pca1_vox_unit = pca1_vox / np.linalg.norm(pca1_vox)
+                        pca2_vox_unit = pca2_vox / np.linalg.norm(pca2_vox)
+                        pca3_vox_unit = pca3_vox / np.linalg.norm(pca3_vox)
                         
                         # Create vectors for arrows (origin, direction)
                         # PCA axis 1 (primary direction) - Red
-                        pca1_end = centroid + pca1 * arrow_length
-                        pca1_vector = np.array([centroid, pca1_end])
+                        pca1_end = centroid + pca1_vox_unit * arrow_length
+                        pca1_vector = np.stack([centroid, pca1_end])[None, ...]  # Shape (1, 2, 3)
                         viewer.add_vectors(pca1_vector, name='PCA Axis 1', 
                                         edge_color='red', length=0)
                         
                         # PCA axis 2 (secondary direction) - Green  
-                        pca2_end = centroid + pca2 * arrow_length
-                        pca2_vector = np.array([centroid, pca2_end])
+                        pca2_end = centroid + pca2_vox_unit * arrow_length
+                        pca2_vector = np.stack([centroid, pca2_end])[None, ...]  # Shape (1, 2, 3)
                         viewer.add_vectors(pca2_vector, name='PCA Axis 2', 
                                         edge_color='green', length=0)
                         
                         # PCA axis 3 (tertiary direction) - Blue
-                        pca3_end = centroid + pca3 * arrow_length
-                        pca3_vector = np.array([centroid, pca3_end])
+                        pca3_end = centroid + pca3_vox_unit * arrow_length
+                        pca3_vector = np.stack([centroid, pca3_end])[None, ...]  # Shape (1, 2, 3)
                         viewer.add_vectors(pca3_vector, name='PCA Axis 3', 
                                         edge_color='blue', length=0)
                         
-                        print(f'  PCA arrows added: lengths = {np.linalg.norm(pca1):.2f}, {np.linalg.norm(pca2):.2f}, {np.linalg.norm(pca3):.2f}')
+                        print(f'  PCA arrows added: lengths = {np.linalg.norm(pca1_vox_unit):.2f}, {np.linalg.norm(pca2_vox_unit):.2f}, {np.linalg.norm(pca3_vox_unit):.2f}')
+                        print(f'  Voxel sizes: {vox}')
+                        print(f'  Physical PCA axes (µm): {pca1_phys}, {pca2_phys}, {pca3_phys}')
+                        print(f'  Voxel PCA axes: {pca1_vox_unit}, {pca2_vox_unit}, {pca3_vox_unit}')
      
                     napari.run()
             
