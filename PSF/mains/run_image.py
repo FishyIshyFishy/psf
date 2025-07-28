@@ -119,7 +119,7 @@ def main():
                         # Get centroid
                         centroid = np.array(bead_raw.shape) / 2
                         
-                        # Create arrow points for PCA axes
+                        # Create arrow vectors for PCA axes
                         arrow_length = min(bead_raw.shape) * 0.3
                         
                         # Convert PCA axes from lists to numpy arrays
@@ -127,23 +127,21 @@ def main():
                         pca2 = np.array(m['pca_axis2'])
                         pca3 = np.array(m['pca_axis3'])
                         
-                        # PCA axis 1 (primary direction)
-                        pca1_end = centroid + pca1 * arrow_length
-                        pca1_points = np.array([centroid, pca1_end])
-                        viewer.add_points(pca1_points, name='PCA Axis 1', 
-                                       face_color='red')
+                        # Create vectors for arrows (origin, direction)
+                        # PCA axis 1 (primary direction) - Red
+                        pca1_vector = np.array([centroid, centroid + pca1 * arrow_length])
+                        viewer.add_vectors(pca1_vector, name='PCA Axis 1', 
+                                        edge_color='red', length=0)
                         
-                        # PCA axis 2 (secondary direction)
-                        pca2_end = centroid + pca2 * arrow_length
-                        pca2_points = np.array([centroid, pca2_end])
-                        viewer.add_points(pca2_points, name='PCA Axis 2', 
-                                       face_color='green')
+                        # PCA axis 2 (secondary direction) - Green
+                        pca2_vector = np.array([centroid, centroid + pca2 * arrow_length])
+                        viewer.add_vectors(pca2_vector, name='PCA Axis 2', 
+                                        edge_color='green', length=0)
                         
-                        # PCA axis 3 (tertiary direction)
-                        pca3_end = centroid + pca3 * arrow_length
-                        pca3_points = np.array([centroid, pca3_end])
-                        viewer.add_points(pca3_points, name='PCA Axis 3', 
-                                       face_color='blue')
+                        # PCA axis 3 (tertiary direction) - Blue
+                        pca3_vector = np.array([centroid, centroid + pca3 * arrow_length])
+                        viewer.add_vectors(pca3_vector, name='PCA Axis 3', 
+                                        edge_color='blue', length=0)
      
                     napari.run()
             
