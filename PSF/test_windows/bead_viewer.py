@@ -4,11 +4,10 @@ import napari
 from tifffile import imread
 from pathlib import Path
 
-# Paths
+
 DATA_DIR = Path(r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\xy1_windows")  # directory with TIFFs + metadata
 META_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\xy1.json"
 
-# Load metadata
 with open(META_PATH, 'r') as f:
     metadata = json.load(f)
 

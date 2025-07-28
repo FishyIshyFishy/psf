@@ -17,11 +17,11 @@ from sklearn.decomposition import PCA
 import nd2
 
 # Configuration - Update these paths and parameters
-ND2_FILE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250320_Controlled-misalignment-HD-MDJ\psf-tilt-angle-sweep\Psf-mp-mo3-4900-offset-0000-slit-2250-z-258617_XY001_T001__Channel_GFP-MPSOPi.nd2"
+ND2_FILE_PATH = r"Z:\BioMIID_Nonsync\BioMIID_Users_Nonsync\singhi7_BioMIID_Nonsync\20250618_Fluosphere-small-PSF\split\multipoint_psf_xy1.nd2"
 
 # Crop parameters - specify the region of interest in the ND2 file
 CROP_START = (50, 100, 100)  # Start coordinates (z, y, x)
-CROP_SIZE = (200, 200, 200)  # Size of the crop (z, y, x)
+CROP_SIZE = (400, 400, 400)  # Size of the crop (z, y, x)
 
 def create_synthetic_skewed_volume(size=128, skew_yz=15, skew_xz=10):
     """Create a synthetic 3D volume with known skew angles."""
@@ -55,7 +55,20 @@ def apply_hann_window(vol):
     wx = np.hanning(x)[None, None, :]
     return vol * (wz * wy * wx)
 
-def detect_skew_angles(volume, percentile=75):
+def get_voxel_size(nd2_path):
+    """Get voxel size from ND2 file."""
+    try:
+        with nd2.ND2File(nd2_path) as f:
+            # Get voxel size in microns
+            voxel_size = f.voxel_size()
+            print(f"Voxel size from ND2: {voxel_size} µm")
+            return voxel_size
+    except Exception as e:
+        print(f"Warning: Could not read voxel size from ND2 file: {e}")
+        print("Using default voxel size: (0.2, 0.1, 0.1) µm")
+        return (0.2, 0.1, 0.1)  # Default: (z, y, x) in µm
+
+def detect_skew_angles(volume, voxel_size=(1.0, 1.0, 1.0), percentile=75):
     """
     Return (angle_yz, angle_xz) in degrees.
     Both angles are measured as the tilt of the dominant energy ridge
@@ -87,7 +100,7 @@ def detect_skew_angles(volume, percentile=75):
     mask = log_c > thresh
 
     # 5) Build PCA-based angle estimator
-    def pca_angle(mask, dim1, dim2):
+    def pca_angle(mask, dim1, dim2, voxel_size):
         # mask: 3D boolean array
         pts = np.argwhere(mask)  # each row = [z, y, x]
         if len(pts) < 2:
@@ -98,6 +111,11 @@ def detect_skew_angles(volume, percentile=75):
         # center around zero
         center = np.array(mask.shape)[[dim2, dim1]] / 2
         coords -= center[None, :]
+        
+        # Scale by voxel size
+        coords[:, 0] *= voxel_size[dim2]  # First dimension
+        coords[:, 1] *= voxel_size[dim1]  # Second dimension
+        
         # PCA
         p = PCA(n_components=2).fit(coords)
         v = p.components_[0]
@@ -108,8 +126,8 @@ def detect_skew_angles(volume, percentile=75):
         return np.degrees(np.arctan2(v[0], v[1]))
 
     # 6) Compute both angles
-    angle_yz = pca_angle(mask, dim1=1, dim2=0)  # plane = (Z,Y)
-    angle_xz = pca_angle(mask, dim1=2, dim2=0)  # plane = (Z,X)
+    angle_yz = pca_angle(mask, dim1=1, dim2=0, voxel_size=voxel_size)  # plane = (Z,Y)
+    angle_xz = pca_angle(mask, dim1=2, dim2=0, voxel_size=voxel_size)  # plane = (Z,X)
 
     return angle_yz, angle_xz
 
@@ -145,31 +163,13 @@ def load_nd2_crop(nd2_path, crop_start, crop_size):
         with nd2.ND2File(nd2_path) as f:
             # Get the full image
             full_image = f.asarray()
-            print(f"Full image shape: {full_image.shape}")
-            
-            # Calculate crop end coordinates
-            crop_end = (
-                crop_start[0] + crop_size[0],
-                crop_start[1] + crop_size[1], 
-                crop_start[2] + crop_size[2]
-            )
-            
-            # Ensure we don't go out of bounds
-            actual_end = (
-                min(crop_end[0], full_image.shape[0]),
-                min(crop_end[1], full_image.shape[1]),
-                min(crop_end[2], full_image.shape[2])
-            )
-            
-            # Extract the crop
+
             crop = full_image[
-                crop_start[0]:actual_end[0],
-                crop_start[1]:actual_end[1],
-                crop_start[2]:actual_end[2]
+                200:600,
+                600:1000,
+                600:1000
             ]
-            
-            print(f"Crop shape: {crop.shape}")
-            print(f"Crop value range: [{crop.min():.3f}, {crop.max():.3f}]")
+
             
             return crop
             
@@ -227,8 +227,8 @@ def demo_synthetic():
     vol = create_synthetic_skewed_volume(size=128, skew_yz=skew_yz, skew_xz=skew_xz)
     print(f"Volume shape: {vol.shape}")
     
-    # Detect skew angles
-    est_yz, est_xz = detect_skew_angles(vol)
+    # Detect skew angles (using unit voxel size for synthetic data)
+    est_yz, est_xz = detect_skew_angles(vol, voxel_size=(1.0, 1.0, 1.0))
     print(f"Detected angles → YZ: {est_yz:.2f}°, XZ: {est_xz:.2f}°")
     print(f"Errors → YZ: {abs(est_yz - skew_yz):.2f}°, XZ: {abs(est_xz - skew_xz):.2f}°")
     
@@ -243,6 +243,9 @@ def demo_real_data():
     """Demonstrate deskew with real ND2 data."""
     print("\n=== REAL DATA DESKEW DEMO ===")
     
+    # Get voxel size from ND2 file
+    voxel_size = get_voxel_size(ND2_FILE_PATH)
+    
     # Load volume crop
     vol = load_nd2_crop(ND2_FILE_PATH, CROP_START, CROP_SIZE)
     if vol is None:
@@ -251,8 +254,8 @@ def demo_real_data():
     
     print(f"Loaded volume shape: {vol.shape}")
     
-    # Detect skew angles
-    est_yz, est_xz = detect_skew_angles(vol)
+    # Detect skew angles with proper voxel size
+    est_yz, est_xz = detect_skew_angles(vol, voxel_size=voxel_size)
     print(f"Detected angles → YZ: {est_yz:.2f}°, XZ: {est_xz:.2f}°")
     
     # Deskew
@@ -262,12 +265,9 @@ def demo_real_data():
     plot_deskew_results(vol, vol_deskew, 0, 0, est_yz, est_xz, 
                        "Real Data Deskew Demo")
 
-def main():
-    """Main function to demonstrate deskew detection and correction."""
-    print("=== DESKEW DETECTION AND CORRECTION DEMO ===")
-    
-    # Demo with synthetic data (known ground truth)
-    demo_synthetic()
+def main():  
+    # # Demo with synthetic data (known ground truth)
+    # demo_synthetic()
     
     # Demo with real data
     demo_real_data()
