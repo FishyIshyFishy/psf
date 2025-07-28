@@ -122,20 +122,25 @@ def main():
                         # Create arrow points for PCA axes
                         arrow_length = min(bead_raw.shape) * 0.3
                         
+                        # Convert PCA axes from lists to numpy arrays
+                        pca1 = np.array(m['pca_axis1'])
+                        pca2 = np.array(m['pca_axis2'])
+                        pca3 = np.array(m['pca_axis3'])
+                        
                         # PCA axis 1 (primary direction)
-                        pca1_end = centroid + m['pca_axis1'] * arrow_length
+                        pca1_end = centroid + pca1 * arrow_length
                         pca1_points = np.array([centroid, pca1_end])
                         viewer.add_points(pca1_points, name='PCA Axis 1', 
                                        face_color='red', size=3, edge_width=2)
                         
                         # PCA axis 2 (secondary direction)
-                        pca2_end = centroid + m['pca_axis2'] * arrow_length
+                        pca2_end = centroid + pca2 * arrow_length
                         pca2_points = np.array([centroid, pca2_end])
                         viewer.add_points(pca2_points, name='PCA Axis 2', 
                                        face_color='green', size=3, edge_width=2)
                         
                         # PCA axis 3 (tertiary direction)
-                        pca3_end = centroid + m['pca_axis3'] * arrow_length
+                        pca3_end = centroid + pca3 * arrow_length
                         pca3_points = np.array([centroid, pca3_end])
                         viewer.add_points(pca3_points, name='PCA Axis 3', 
                                        face_color='blue', size=3, edge_width=2)
